@@ -1,0 +1,17 @@
+1.
+Wireshark抓包分析
+
+使用Wireshark抓取微信电脑端登录的过程。
+
+过滤出所有HTTP请求的数据包。
+
+2.
+tshark命令练习
+
+使用 tshark -D 枚举你的网络接口。
+
+选择合适的网卡接口并抓取1000个数据包（提示：使用 -c 1000 参数限制抓包数量），然后保存为capture.pcap。
+
+解析 capture.pcap 并筛选出所有TCP协议的数据包。
+
+统计 capture.pcap 中各个协议的数据包数量。
