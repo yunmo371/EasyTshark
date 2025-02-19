@@ -93,6 +93,7 @@ std::string exec_2(const char* cmd)
         LOG_F(ERROR,"Failed to run tshark command : %s", cmd);
         return "";
     }
+    
     while(fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
     {
         Packet packet;
