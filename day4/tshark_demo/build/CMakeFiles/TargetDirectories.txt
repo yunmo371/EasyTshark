@@ -1,0 +1,3 @@
+/root/project/learn_from_xuanyuan/day3/tshark_demo/build/CMakeFiles/rebuild_cache.dir
+/root/project/learn_from_xuanyuan/day3/tshark_demo/build/CMakeFiles/tshark_demo_main.dir
+/root/project/learn_from_xuanyuan/day3/tshark_demo/build/CMakeFiles/edit_cache.dir
