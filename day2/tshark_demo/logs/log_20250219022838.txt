@@ -1,7 +1,0 @@
-arguments: ./output/tshark_demo_main
-Current dir: /root/project/learn_from_xuanyuan/day2/tshark_demo
-File verbosity level: 9
-date       time         ( uptime  ) [ thread name/id ]                   file:line     v| 
-2025-02-19 02:28:38.009 (   0.000s) [main thread     ]             loguru.cpp:841   INFO| Logging to 'logs/log_20250219022838.txt', mode: 'w', verbosity: 9
-2025-02-19 02:28:38.436 (   0.428s) [main thread     ]               main.cpp:63    INFO| {"frame_number":1,"timestamp":"Feb 19, 2025 00:20:10.120941428 CST","src_ip":"120.229.80.250","dst_ip":"172.27.205.146","protocol":"TCP","info":"1338 → 22 [ACK] Seq=1 Ack=1 Win=1023 Len=0"}
-2025-02-19 02:28:38.436 (   0.428s) [main thread     ]             loguru.cpp:538   INFO| atexit
