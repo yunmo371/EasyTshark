@@ -7,7 +7,9 @@ struct Packet {
     int frame_number;			// 数据包编号
     std::string time;			// 数据包的时间戳
     std::string src_ip;			// 源IP地址
+    std::string src_addr;
     std::string dst_ip;			// 目的IP地址
+    std::string dst_addr;
     std::string protocol;		// 协议
     std::string info;			// 数据包的概要信息
     uint32_t cap_len;

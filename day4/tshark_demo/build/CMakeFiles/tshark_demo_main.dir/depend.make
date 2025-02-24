@@ -4,6 +4,7 @@
 CMakeFiles/tshark_demo_main.dir/src/loguru.cpp.o: ../include/loguru.hpp
 CMakeFiles/tshark_demo_main.dir/src/loguru.cpp.o: ../src/loguru.cpp
 
+CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../include/ip2region/xdb_search.h
 CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../include/loguru.hpp
 CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../include/rapidjson/allocators.h
 CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../include/rapidjson/document.h
@@ -35,6 +36,15 @@ CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../include/tsharkHead.hpp
 CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../include/utils.hpp
 CMakeFiles/tshark_demo_main.dir/src/main.cpp.o: ../src/main.cpp
 
+CMakeFiles/tshark_demo_main.dir/src/utils.cpp.o: ../include/ip2region/xdb_search.h
 CMakeFiles/tshark_demo_main.dir/src/utils.cpp.o: ../include/tsharkHead.hpp
+CMakeFiles/tshark_demo_main.dir/src/utils.cpp.o: ../include/utils.hpp
 CMakeFiles/tshark_demo_main.dir/src/utils.cpp.o: ../src/utils.cpp
+
+CMakeFiles/tshark_demo_main.dir/src/xdb_bench.cc.o: ../include/ip2region/xdb_bench.h
+CMakeFiles/tshark_demo_main.dir/src/xdb_bench.cc.o: ../include/ip2region/xdb_search.h
+CMakeFiles/tshark_demo_main.dir/src/xdb_bench.cc.o: ../src/xdb_bench.cc
+
+CMakeFiles/tshark_demo_main.dir/src/xdb_search.cc.o: ../include/ip2region/xdb_search.h
+CMakeFiles/tshark_demo_main.dir/src/xdb_search.cc.o: ../src/xdb_search.cc
 

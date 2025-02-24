@@ -15,8 +15,10 @@
 #include"rapidjson/stringbuffer.h"
 
 
-void parseLine(std::string line, Packet& packet) 
+bool parseLine(std::string line, Packet& packet) 
 {
+    // line = UTF8ToANSIString(line);
+
     if (line.back() == '\n') {
         line.pop_back();
     }
@@ -24,10 +26,16 @@ void parseLine(std::string line, Packet& packet)
     std::string field;
     std::vector<std::string> fields;
 
-    while (std::getline(ss, field, '\t')) {  // 假设字段用 tab 分隔
-        fields.push_back(field);
+    size_t start = 0, end;
+    while((end = line.find('\t', start)) != std::string::npos){
+        fields.push_back(line.substr(start, end - start));
+        start = end + 1;
     }
-
+    fields.push_back(line.substr(start)); 
+    // while (std::getline(ss, field, '\t')) {  // 假设字段用 tab 分隔
+    //     fields.push_back(field);
+    // }
+    
     // 字段顺序：-e frame.number -e frame.time -e frame.cap_len -e ip.src -e ipv6.src -e ip.dst -e ipv6.dst
     // -e tcp.srcport -e udp.srcport -e tcp.dstport -e udp.dstport -e _ws.col.Protocol -e _ws.col.Info
     // 0: frame.number
@@ -44,12 +52,18 @@ void parseLine(std::string line, Packet& packet)
     // 11: _ws.col.Protocol
     // 12: _ws.col.Info
 
+    // test ip
+    IP2RegionUtil ip2RegionUtil;
+    ip2RegionUtil.init("/home/ip2region.xdb");
+
     if (fields.size() >= 13) {
         packet.frame_number = std::stoi(fields[0]);
         packet.time = fields[1];
         packet.cap_len = std::stoi(fields[2]);
         packet.src_ip = fields[3].empty() ? fields[4] : fields[3];
+        packet.src_addr = ip2RegionUtil.getIpLocation(packet.src_ip);
         packet.dst_ip = fields[5].empty() ? fields[6] : fields[5];
+        packet.dst_addr = ip2RegionUtil.getIpLocation(packet.dst_ip);
         if (!fields[7].empty() || !fields[8].empty()) {
             packet.src_port = std::stoi(fields[7].empty() ? fields[8] : fields[7]);
         }
@@ -59,6 +73,10 @@ void parseLine(std::string line, Packet& packet)
         }
         packet.protocol = fields[11];
         packet.info = fields[12];
+        return true;
+    }else{
+        printf("error!\n");
+        return false;
     }
 }
 
@@ -88,8 +106,10 @@ void printPacket(const Packet &packet)
     pktObj.AddMember("frame_number", packet.frame_number, allocator);
     pktObj.AddMember("timestamp", rapidjson::Value(packet.time.c_str(), allocator), allocator);
     pktObj.AddMember("src_ip", rapidjson::Value(packet.src_ip.c_str(), allocator), allocator);
+    pktObj.AddMember("src_addr", rapidjson::Value(packet.src_addr.c_str(), allocator), allocator);
     pktObj.AddMember("src_port", rapidjson::Value(packet.src_port.c_str(), allocator), allocator);
     pktObj.AddMember("dst_ip", rapidjson::Value(packet.dst_ip.c_str(), allocator), allocator);
+    pktObj.AddMember("dst_addr", rapidjson::Value(packet.dst_addr.c_str(), allocator), allocator);
     pktObj.AddMember("dst_port", rapidjson::Value(packet.dst_port.c_str(), allocator), allocator);
     pktObj.AddMember("protocol", rapidjson::Value(packet.protocol.empty() ? "(unkonw)" : packet.protocol.c_str(), allocator), allocator);
     pktObj.AddMember("info", rapidjson::Value(packet.info.empty() ? "(unkonw)" : packet.info.c_str(), allocator), allocator);
@@ -118,15 +138,17 @@ void exec(const char* cmd, const std::string& packet_file)
     uint32_t file_offset = sizeof(PcapHeader);
     while (fgets(buffer.data(), sizeof(buffer), pipe.get()) != nullptr) {
         Packet packet;
-        // std::string ansiStr = UTF8ToANSIString(buffer.data());
-        parseLine(buffer.data(), packet);
+        if(parseLine(buffer.data(), packet)){
+            // 计算当前报文的偏移，然后记录在Packet对象中
+            packet.file_offset = file_offset + sizeof(PacketHeader);
 
-        // 计算当前报文的偏移，然后记录在Packet对象中
-        packet.file_offset = file_offset + sizeof(PacketHeader);
-
-        // 更新偏移游标
-        file_offset = file_offset + sizeof(PacketHeader) + packet.cap_len;
-        packets.push_back(packet);
+            // 更新偏移游标
+            file_offset = file_offset + sizeof(PacketHeader) + packet.cap_len;
+            packets.push_back(packet);
+        }else{
+            LOG_F(WARNING, "Failed to parse line: %s", buffer.data());
+            continue;
+        }
     }
 
     for (auto &p : packets) {

@@ -6,6 +6,14 @@
 
 #IncludeRegexTransform: 
 
+../include/ip2region/xdb_bench.h
+xdb_search.h
+../include/ip2region/xdb_search.h
+
+../include/ip2region/xdb_search.h
+string
+-
+
 ../include/loguru.hpp
 loguru.hpp
 -
@@ -285,10 +293,14 @@ string
 ../include/utils.hpp
 string
 -
+memory
+-
+ip2region/xdb_search.h
+../include/ip2region/xdb_search.h
 
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/loguru.cpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/loguru.cpp
 loguru.hpp
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/loguru.hpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/loguru.hpp
 algorithm
 -
 atomic
@@ -330,7 +342,7 @@ linux/limits.h
 limits.h
 -
 TargetConditionals.h
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/TargetConditionals.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/TargetConditionals.h
 cxxabi.h
 -
 dlfcn.h
@@ -348,7 +360,7 @@ pthread_np.h
 windows.h
 -
 
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/main.cpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/main.cpp
 iostream
 -
 fstream
@@ -364,21 +376,21 @@ vector
 sstream
 -
 loguru.hpp
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/loguru.hpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/loguru.hpp
 utils.hpp
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/utils.hpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/utils.hpp
 tsharkHead.hpp
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/tsharkHead.hpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/tsharkHead.hpp
 rapidjson/document.h
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/rapidjson/document.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/rapidjson/document.h
 rapidjson/writer.h
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/rapidjson/writer.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/rapidjson/writer.h
 rapidjson/prettywriter.h
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/rapidjson/prettywriter.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/rapidjson/prettywriter.h
 rapidjson/stringbuffer.h
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/rapidjson/stringbuffer.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/rapidjson/stringbuffer.h
 
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/utils.cpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/utils.cpp
 iconv.h
 -
 string
@@ -396,5 +408,33 @@ iomanip
 sstream
 -
 tsharkHead.hpp
-/root/project/learn_from_xuanyuan/day3/tshark_demo/src/tsharkHead.hpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/tsharkHead.hpp
+utils.hpp
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/utils.hpp
+
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/xdb_bench.cc
+ip2region/xdb_bench.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/ip2region/xdb_bench.h
+arpa/inet.h
+-
+stdio.h
+-
+string.h
+-
+sys/time.h
+-
+iostream
+-
+vector
+-
+
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/xdb_search.cc
+ip2region/xdb_search.h
+/root/dev/learn_from_xuanyuan/day4/tshark_demo/src/ip2region/xdb_search.h
+arpa/inet.h
+-
+sys/time.h
+-
+iostream
+-
 

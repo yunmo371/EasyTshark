@@ -12,6 +12,8 @@ add_executable(tshark_demo_main
     src/main.cpp
     src/loguru.cpp
     src/utils.cpp
+    src/xdb_bench.cc
+    src/xdb_search.cc
 )
 
 target_link_libraries(tshark_demo_main pthread dl)

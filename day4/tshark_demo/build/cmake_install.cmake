@@ -1,4 +1,4 @@
-# Install script for directory: /root/project/learn_from_xuanyuan/day3/tshark_demo
+# Install script for directory: /root/dev/learn_from_xuanyuan/day4/tshark_demo
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -45,5 +45,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/root/project/learn_from_xuanyuan/day3/tshark_demo/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/root/dev/learn_from_xuanyuan/day4/tshark_demo/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
