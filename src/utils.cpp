@@ -1,5 +1,4 @@
 #include<iconv.h>
-#include<string>
 #include<vector>
 #include<stdexcept>
 #include<ctime>
@@ -7,7 +6,7 @@
 #include<iomanip>
 #include<sstream>
 
-#include"tsharkHead.hpp"
+#include"tsharkDataType.hpp"
 #include"utils.hpp"
 
 
@@ -101,6 +100,17 @@ std::string get_timestamp()
     std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
     std::tm* now_tm = std::localtime(&now_time_t);
     std::stringstream ss;
-    ss << std::put_time(now_tm, "%Y%m%d%H%M%S");
+    // 获取自纪元以来的总时间（纳秒级）
+    auto duration_since_epoch = now.time_since_epoch();
+    // 转换为秒
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration_since_epoch);
+    // 剩余的纳秒部分
+    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration_since_epoch - seconds);
+    // 转换为微秒
+    long long microseconds = nanoseconds.count() / 1000;
+
+    // 格式化时间字符串
+    ss << std::put_time(now_tm, "%Y-%m-%d %H:%M:%S") << "." << std::setw(6) << std::setfill('0') << microseconds;
+
     return ss.str();
 }

@@ -12,6 +12,7 @@ add_executable(tshark_demo_main
     src/main.cpp
     src/loguru.cpp
     src/utils.cpp
+    src/tsharkManager.cpp
     src/xdb_bench.cc
     src/xdb_search.cc
 )
