@@ -1,75 +1,85 @@
-#include<iconv.h>
-#include<vector>
-#include<stdexcept>
-#include<ctime>
-#include<chrono>
-#include<iomanip>
-#include<sstream>
+#include <iconv.h>
+#include <vector>
+#include <stdexcept>
+#include <ctime>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
-#include"tsharkDataType.hpp"
-#include"utils.hpp"
-
+#include "tsharkDataType.hpp"
+#include "utils.hpp"
 
 std::shared_ptr<xdb_search_t> IP2RegionUtil::xdbPtr;
 
-std::string IP2RegionUtil::getIpLocation(const std::string& ip) {
+std::string IP2RegionUtil::getIpLocation(const std::string &ip)
+{
 
-    //if is IPv6, return empty string
-    if (ip.size() > 15) {
+    // if is IPv6, return empty string
+    if (ip.size() > 15)
+    {
         return "";
     }
 
     std::string location = xdbPtr->search(ip);
-    if (!location.empty() && location.find("invalid") == std::string::npos) {
+    if (!location.empty() && location.find("invalid") == std::string::npos)
+    {
         return parseLocation(location);
-    } else {
+    }
+    else
+    {
         return "";
     }
 }
 
-std::string IP2RegionUtil::parseLocation(const std::string& input) {
+std::string IP2RegionUtil::parseLocation(const std::string &input)
+{
     std::vector<std::string> tokens;
     std::string token;
     std::stringstream ss(input);
 
-    if (input.find("内网") != std::string::npos) {
+    if (input.find("内网") != std::string::npos)
+    {
         return "内网";
     }
 
-    while (std::getline(ss, token, '|')) {
+    while (std::getline(ss, token, '|'))
+    {
         tokens.push_back(token);
     }
 
-    if (tokens.size() >= 4) {
+    if (tokens.size() >= 4)
+    {
         std::string result;
-        if (tokens[0].compare("0") != 0) {
+        if (tokens[0].compare("0") != 0)
+        {
             result.append(tokens[0]);
         }
-        if (tokens[2].compare("0") != 0) {
+        if (tokens[2].compare("0") != 0)
+        {
             result.append("-" + tokens[2]);
         }
-        if (tokens[3].compare("0") != 0) {
+        if (tokens[3].compare("0") != 0)
+        {
             result.append("-" + tokens[3]);
         }
 
         return result;
     }
-    else {
+    else
+    {
         return input;
     }
 }
 
-
-bool IP2RegionUtil::init(const std::string& xdbFilePath) {
+bool IP2RegionUtil::init(const std::string &xdbFilePath)
+{
 
     xdbPtr = std::make_shared<xdb_search_t>(xdbFilePath);
     xdbPtr->init_content();
     return true;
 }
 
-
-
-std::string UTF8ToANSIString(const std::string& utf8Str)
+std::string UTF8ToANSIString(const std::string &utf8Str)
 {
     if (utf8Str.empty())
         return "";
@@ -81,8 +91,8 @@ std::string UTF8ToANSIString(const std::string& utf8Str)
     size_t inBytesLeft = utf8Str.size();
     size_t outBytesLeft = utf8Str.size() * 2;
     std::vector<char> outBuf(outBytesLeft);
-    char* inBuf = const_cast<char*>(utf8Str.c_str());
-    char* outBufPtr = outBuf.data();
+    char *inBuf = const_cast<char *>(utf8Str.c_str());
+    char *outBufPtr = outBuf.data();
 
     if (iconv(cd, &inBuf, &inBytesLeft, &outBufPtr, &outBytesLeft) == (size_t)-1)
     {
@@ -98,7 +108,7 @@ std::string get_timestamp()
 {
     auto now = std::chrono::system_clock::now();
     std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
-    std::tm* now_tm = std::localtime(&now_time_t);
+    std::tm *now_tm = std::localtime(&now_time_t);
     std::stringstream ss;
     // 获取自纪元以来的总时间（纳秒级）
     auto duration_since_epoch = now.time_since_epoch();
