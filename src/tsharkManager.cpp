@@ -1,3 +1,8 @@
+#include <sys/epoll.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdexcept>
+#include <csignal>
 #include <iomanip>
 #include <set>
 
@@ -315,22 +320,22 @@ void TsharkManager::printAllPackets()
 
         LOG_F(INFO, buffer.GetString());
 
-        std::string srcMac = packet->src_mac;
-        std::string srcIp = packet->src_ip;
-        std::string adapterRemark = "unknown";
-        int adapterId = 0;
-        std::string adapterName = "unknown";
-        for (const auto &adapter : networkAdapters)
-        {
-            if (adapter.name.find(srcMac) != std::string::npos || adapter.name.find(srcIp) != std::string::npos)
-            {
-                adapterId = adapter.id;
-                adapterName = adapter.name;
-                adapterRemark = adapter.remark;
-                break;
-            }
-        }
-        LOG_F(INFO, "网卡[%d]: name[%s] remark[%s]", adapterId, adapterName.c_str(), adapterRemark.c_str());
+        // std::string srcMac = packet->src_mac;
+        // std::string srcIp = packet->src_ip;
+        // std::string adapterRemark = "unknown";
+        // int adapterId = 0;
+        // std::string adapterName = "unknown";
+        // for (const auto &adapter : networkAdapters)
+        // {
+        //     if (adapter.name.find(srcMac) != std::string::npos || adapter.name.find(srcIp) != std::string::npos)
+        //     {
+        //         adapterId = adapter.id;
+        //         adapterName = adapter.name;
+        //         adapterRemark = adapter.remark;
+        //         break;
+        //     }
+        // }
+        // LOG_F(INFO, "网卡[%d]: name[%s] remark[%s]", adapterId, adapterName.c_str(), adapterRemark.c_str());
 
         std::vector<unsigned char> buffer2(packet->cap_len);
         getPacketHexData(packet->frame_number, buffer2);
@@ -341,4 +346,181 @@ void TsharkManager::printAllPackets()
         LOG_F(INFO, "%s\n", hex_str.str().c_str());
     }
     LOG_F(INFO, "Number of packets: %zu", count);
+}
+
+bool TsharkManager::startCapture(std::string adapterName)
+{
+    LOG_F(INFO, "即将开始抓包，网卡：%s", adapterName.c_str());
+
+    // 关闭停止标记
+    stopFlag = false;
+
+    // 启动抓包线程
+    captureWorkThread = std::make_shared<std::thread>(&TsharkManager::captureWorkThreadEntry, this, "\"" + adapterName + "\"");
+
+    return true;
+}
+
+bool TsharkManager::stopCapture()
+{
+    LOG_F(INFO, "即将停止抓包");
+    stopFlag = true;
+
+    if (captureWorkThread->joinable())
+    {
+        captureWorkThread->join();
+    }
+
+    return true;
+}
+
+void TsharkManager::captureWorkThreadEntry(std::string adapterName)
+{
+    try
+    {
+        std::string captureFile = "capture.pcap";
+        std::vector<std::string> tsharkArgs = {
+            tsharkPath,
+            "-i",
+            adapterName.c_str(),
+            "-w",
+            captureFile,
+            "-F",
+            "pcap",
+            "-T",
+            "fields",
+            "-e",
+            "frame.number",
+            "-e",
+            "frame.time_epoch",
+            "-e",
+            "frame.len",
+            "-e",
+            "frame.cap_len",
+            "-e",
+            "eth.src",
+            "-e",
+            "eth.dst",
+            "-e",
+            "ip.src",
+            "-e",
+            "ipv6.src",
+            "-e",
+            "ip.dst",
+            "-e",
+            "ipv6.dst",
+            "-e",
+            "tcp.srcport",
+            "-e",
+            "udp.srcport",
+            "-e",
+            "tcp.dstport",
+            "-e",
+            "udp.dstport",
+            "-e",
+            "_ws.col.Protocol",
+            "-e",
+            "_ws.col.Info",
+        };
+        std::string command;
+        for (const auto &arg : tsharkArgs)
+        {
+            command += arg + " ";
+        }
+
+        LOG_F(INFO, "Executing command: %s", command.c_str());
+        FILE *pipe = popen(command.c_str(), "r");
+        if (!pipe)
+        {
+            LOG_F(ERROR, "Failed to run tshark command!");
+            return;
+        }
+
+        int pipe_fd = fileno(pipe);
+        if (pipe_fd < 0)
+        {
+            LOG_F(ERROR, "Failed to get pipe file descriptor!");
+            pclose(pipe);
+            return;
+        }
+        // 设置为非阻塞模式
+        int flags = fcntl(pipe_fd, F_GETFL, 0);
+        fcntl(pipe_fd, F_SETFL, flags | O_NONBLOCK);
+
+        // 创建 epoll 实例
+        int epoll_fd = epoll_create1(0);
+        if (epoll_fd < 0)
+        {
+            LOG_F(ERROR, "Failed to create epoll instance!");
+            pclose(pipe);
+            return;
+        }
+
+        struct epoll_event ev;
+        ev.events = EPOLLIN | EPOLLET;
+        ev.data.fd = pipe_fd;
+        if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, pipe_fd, &ev) < 0)
+        {
+            LOG_F(ERROR, "Failed to add file descriptor to epoll!");
+            close(epoll_fd);
+            pclose(pipe);
+            return;
+        }
+
+        char buffer[4096];
+        uint32_t file_offset = sizeof(PcapHeader);
+
+        while (!stopFlag)
+        {
+            struct epoll_event events[1];
+            int nfds = epoll_wait(epoll_fd, events, 1, 1000);
+            if (nfds > 0)
+            {
+                if (events[0].events & EPOLLIN)
+                {
+                    ssize_t bytes_read;
+                    while ((bytes_read = read(pipe_fd, buffer, sizeof(buffer))) > 0)
+                    {
+                        std::string line(buffer, bytes_read);
+                        LOG_F(INFO, "Read data: %s", line.c_str());
+                    }
+                    if (bytes_read == 0)
+                    {
+                        LOG_F(INFO, "Pipe closed by tshark.");
+                        break;
+                    }
+                    else if (bytes_read < 0 && errno != EAGAIN)
+                    {
+                        LOG_F(ERROR, "Read error: %s", strerror(errno));
+                        break;
+                    }
+                }
+                if (events[0].events & EPOLLHUP)
+                {
+                    LOG_F(INFO, "Pipe closed by tshark.");
+                    break;
+                }
+            }
+            else if (nfds == 0)
+            {
+                LOG_F(INFO, "epoll_wait timed out.");
+            }
+            else
+            {
+                LOG_F(ERROR, "epoll_wait error: %s", strerror(errno));
+                break;
+            }
+        }
+        close(epoll_fd);
+        pclose(pipe);
+        LOG_F(INFO, "Capture thread exiting gracefully.");
+    }
+    catch (const std::exception &e)
+    {
+        LOG_F(ERROR, "Exception in captureWorkThreadEntry: %s", e.what());
+    }
+    catch (...)
+    {
+        LOG_F(ERROR, "Unknown exception in captureWorkThreadEntry.");
+    }
 }
