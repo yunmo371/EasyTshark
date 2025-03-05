@@ -17,6 +17,223 @@ TsharkManager::TsharkManager(std::string currentFilePath)
 
 TsharkManager::~TsharkManager() {}
 
+void TsharkManager::stopMonitorAdaptersFlowTrend()
+{
+    // 停止监控所有网卡流量统计数据
+    std::unique_lock<std::recursive_mutex> lock(adapterFlowTrendMapLock);
+
+    // 先杀死对应的tshark进程
+    for (auto adapterPipePair : adapterFlowTrendMonitorMap)
+    {
+        ProcessUtil::Kill(adapterPipePair.second.tsharkPid);
+    }
+
+    // 然后关闭管道并从 epoll 中移除
+    for (auto &adapterPipePair : adapterFlowTrendMonitorMap)
+    {
+        if (adapterPipePair.second.monitorTsharkPipe)
+        {
+            int pipeFd = fileno(adapterPipePair.second.monitorTsharkPipe);
+            if (pipeFd != -1)
+            {
+                // 从 epoll 中移除
+                epoll_ctl(epollFd, EPOLL_CTL_DEL, pipeFd, nullptr);
+                // 关闭管道
+                pclose(adapterPipePair.second.monitorTsharkPipe);
+            }
+        }
+        LOG_F(INFO, "网卡：%s 流量监控已停止", adapterPipePair.first.c_str());
+    }
+    // 清空记录的流量趋势数据
+    adapterFlowTrendMonitorMap.clear();
+
+    // 关闭 epoll 文件描述符
+    if (epollFd != -1)
+    {
+        close(epollFd);
+        epollFd = -1;
+    }
+}
+
+void TsharkManager::getAdaptersFlowTrendData(std::map<std::string, std::map<long, long>> &flowTrendData)
+{
+    // 获取所有网卡流量统计数据
+    long timeNow = time(nullptr);
+
+    // 数据从最左边冒出来
+    // 一开始：以最开始监控时间为左起点，终点为未来300秒
+    // 随着时间推移，数据逐渐填充完这300秒
+    // 超过300秒之后，结束节点就是当前，开始节点就是当前-300
+    long startWindow = timeNow - adapterFlowTrendMonitorStartTime > 300 ? timeNow - 300 : adapterFlowTrendMonitorStartTime;
+    long endWindow = timeNow - adapterFlowTrendMonitorStartTime > 300 ? timeNow : adapterFlowTrendMonitorStartTime + 300;
+
+    std::unique_lock<std::recursive_mutex> lock(adapterFlowTrendMapLock);
+    for (const auto &adapterPipePair : adapterFlowTrendMonitorMap)
+    {
+        flowTrendData.insert(std::make_pair(adapterPipePair.first, std::map<long, long>()));
+
+        // 从当前时间戳向前倒推300秒
+        for (long t = startWindow; t <= endWindow; t++)
+        {
+            if (adapterPipePair.second.flowTrendData.find(t) != adapterPipePair.second.flowTrendData.end())
+            {
+                flowTrendData[adapterPipePair.first][t] = adapterPipePair.second.flowTrendData.at(t);
+            }
+            else
+            {
+                flowTrendData[adapterPipePair.first][t] = 0;
+            }
+        }
+    }
+}
+
+void TsharkManager::startMonitorAdaptersFlowTrend()
+{
+    // 开始监控所有网卡流量统计数据
+    std::unique_lock<std::recursive_mutex> lock(adapterFlowTrendMapLock);
+
+    adapterFlowTrendMonitorStartTime = time(nullptr);
+
+    epollFd = epoll_create1(0);
+    if (epollFd == -1)
+    {
+        LOG_F(ERROR, "Failed to create epoll file descriptor.");
+        return;
+    }
+
+    // 第一步：获取网卡列表
+    std::vector<AdapterInfo> adapterList = getNetworkAdapterInfo();
+
+    // 第二步：每个网卡启动一个线程，统计对应网卡的数据
+    for (const auto &adapter : adapterList)
+    {
+        adapterFlowTrendMonitorMap.insert(std::make_pair(adapter.name, AdapterMonitorInfo()));
+        AdapterMonitorInfo &monitorInfo = adapterFlowTrendMonitorMap[adapter.name];
+
+        // 启动 tshark 命令
+        std::string tsharkCmd = tsharkPath + " -i \"" + adapter.name + "\" -T fields -e frame.time_epoch -e frame.len";
+        LOG_F(INFO, "Starting tshark for adapter: %s", adapter.name.c_str());
+
+        pid_t tsharkPid = 0;
+        FILE *pipe = ProcessUtil::PopenEx(tsharkCmd.c_str(), &tsharkPid); // 假设 ProcessUtil::PopenEx 是自定义函数
+        if (!pipe)
+        {
+            LOG_F(ERROR, "Failed to start tshark for adapter: %s", adapter.name.c_str());
+            continue;
+        }
+
+        // 获取管道的文件描述符并设置为非阻塞模式
+        int pipeFd = fileno(pipe);
+        int flags = fcntl(pipeFd, F_GETFL, 0);
+        fcntl(pipeFd, F_SETFL, flags | O_NONBLOCK);
+
+        // 将管道注册到 epoll
+        epoll_event ev;
+        ev.events = EPOLLIN | EPOLLET; // 边缘触发
+        ev.data.fd = pipeFd;
+        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, pipeFd, &ev) == -1)
+        {
+            LOG_F(ERROR, "Failed to add pipe to epoll for adapter: %s", adapter.name.c_str());
+            close(pipeFd);
+            continue;
+        }
+
+        // 保存管道和进程 ID
+        monitorInfo.monitorTsharkPipe = pipe;
+        monitorInfo.tsharkPid = tsharkPid;
+    }
+
+    // 启动一个线程来处理 epoll 事件
+    std::thread epollThread(&TsharkManager::adapterFlowTrendMonitorThreadEntry, this);
+    epollThread.detach(); // 分离线程
+}
+
+void TsharkManager::adapterFlowTrendMonitorThreadEntry()
+{
+    epoll_event events[10]; // 事件缓冲区
+    int numEvents;
+
+    while (true)
+    {
+        numEvents = epoll_wait(epollFd, events, 10, -1); // 等待事件
+        if (numEvents == -1)
+        {
+            LOG_F(ERROR, "epoll_wait failed.");
+            break;
+        }
+
+        for (int i = 0; i < numEvents; ++i)
+        {
+            int pipeFd = events[i].data.fd;
+            char buffer[256] = {0};
+            ssize_t bytesRead;
+
+            while ((bytesRead = read(pipeFd, buffer, sizeof(buffer) - 1)) > 0)
+            {
+                buffer[bytesRead] = '\0'; // 确保字符串结尾
+                std::string line(buffer);
+                std::istringstream iss(line);
+                std::string timestampStr, lengthStr;
+
+                // 跳过无关行
+                if (line.find("Capturing") != std::string::npos || line.find("captured") != std::string::npos)
+                {
+                    continue;
+                }
+
+                // 解析时间戳和数据包长度
+                if (!(iss >> timestampStr >> lengthStr))
+                {
+                    LOG_F(ERROR, "Failed to parse tshark output: %s", line.c_str());
+                    continue;
+                }
+
+                try
+                {
+                    long timestamp = static_cast<long>(std::stod(timestampStr));
+                    long packetLength = std::stol(lengthStr);
+
+                    // 更新流量趋势数据
+                    std::unique_lock<std::recursive_mutex> lock(adapterFlowTrendMapLock);
+                    for (auto &pair : adapterFlowTrendMonitorMap) // 使用 C++11 的范围循环
+                    {
+                        const std::string &adapterName = pair.first;
+                        AdapterMonitorInfo &monitorInfo = pair.second;
+
+                        if (fileno(monitorInfo.monitorTsharkPipe) == pipeFd)
+                        {
+                            monitorInfo.flowTrendData[timestamp] += packetLength;
+
+                            // 保留最近 300 秒的数据
+                            while (monitorInfo.flowTrendData.size() > 300)
+                            {
+                                auto it = monitorInfo.flowTrendData.begin();
+                                LOG_F(INFO, "Removing old data for second: %ld, Traffic: %ld bytes", it->first, it->second);
+                                monitorInfo.flowTrendData.erase(it);
+                            }
+                            break;
+                        }
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    LOG_F(ERROR, "Error parsing tshark output: %s", e.what());
+                }
+            }
+
+            // 检查管道是否关闭
+            if (bytesRead == 0 || (bytesRead == -1 && errno != EAGAIN))
+            {
+                LOG_F(INFO, "Pipe closed or error occurred for fd: %d", pipeFd);
+                close(pipeFd);                                      // 关闭文件描述符
+                epoll_ctl(epollFd, EPOLL_CTL_DEL, pipeFd, nullptr); // 从 epoll 中移除
+            }
+        }
+    }
+
+    LOG_F(INFO, "adapterFlowTrendMonitorThreadEntry has ended.");
+}
+
 bool TsharkManager::getPacketHexData(uint32_t frameNumber, std::vector<unsigned char> &buffer)
 {
     if (frameNumber >= allPackets.size())
