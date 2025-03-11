@@ -79,7 +79,7 @@ bool IP2RegionUtil::init(const std::string &xdbFilePath)
     return true;
 }
 
-std::string UTF8ToANSIString(const std::string &utf8Str)
+std::string CommonUtil::UTF8ToANSIString(const std::string &utf8Str)
 {
     if (utf8Str.empty())
         return "";
@@ -104,7 +104,7 @@ std::string UTF8ToANSIString(const std::string &utf8Str)
     return std::string(outBuf.begin(), outBuf.begin() + (outBuf.size() - outBytesLeft));
 }
 
-std::string get_timestamp()
+std::string CommonUtil::get_timestamp()
 {
     auto now = std::chrono::system_clock::now();
     std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);

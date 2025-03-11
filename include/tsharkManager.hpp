@@ -2,6 +2,8 @@
 #define tsharkManager_hpp
 
 #include "tsharkDataType.hpp"
+#include "rapidxml.hpp"
+#include "rapidxml_utils.hpp"
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/prettywriter.h"
@@ -14,13 +16,13 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
-#include <sys/types.h>
-#include <unistd.h>
 #include <unordered_map>
 #include <thread>
 #include <mutex>
 #include <map>
-#include <signal.h>
+
+using namespace rapidxml;
+using namespace rapidjson;
 
 class AdapterMonitorInfo
 {
@@ -73,12 +75,18 @@ public:
     // 获取所有网卡流量统计数据
     void getAdaptersFlowTrendData(std::map<std::string, std::map<long, long>> &flowTrendData);
 
+    // 获取指定数据包的详情内容
+    bool getPacketDetailInfo(uint32_t frameNumber, std::string &result);
+
 private:
     bool parseLine(std::string line, std::shared_ptr<Packet> packet);
 
 private:
-    // 执行程序路径
+    // tshark路径
     std::string tsharkPath;
+
+    // editcap路径
+    std::string editcapPath;
 
     // 网卡信息
     std::vector<AdapterInfo> networkAdapters;
@@ -111,58 +119,107 @@ private:
     long adapterFlowTrendMonitorStartTime = 0;
 };
 
-class ProcessUtil
+class MiscUtil
 {
 public:
-#if defined(__unix__) || defined(__APPLE__)
-    static FILE *PopenEx(std::string command, pid_t *pidOut = nullptr)
+    // 获得随机字符串
+    static std::string getRandomString(size_t length)
     {
-        int pipefd[2] = {0};
-        FILE *pipeFp = nullptr;
+        const std::string chars = "abcdefghijklmnopqrstuvwxyz"
+                                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                  "0123456789";
+        std::random_device rd;        // 用于种子
+        std::mt19937 generator(rd()); // 生成器
+        std::uniform_int_distribution<> distribution(0, chars.size() - 1);
 
-        if (pipe(pipefd) == -1)
+        std::string randomString;
+        for (size_t i = 0; i < length; ++i)
         {
-            perror("pipe");
-            return nullptr;
+            randomString += chars[distribution(generator)];
         }
 
-        pid_t pid = fork();
-        if (pid == -1)
+        return randomString;
+    }
+    // XML转JSON
+    static bool xml2JSON(std::string xmlContent, rapidjson::Document &outJsonDoc)
+    {
+        // 解析 XML
+        rapidxml::xml_document<> doc;
+        try
         {
-            perror("fork");
-            close(pipefd[0]);
-            close(pipefd[1]);
-            return nullptr;
+            doc.parse<0>(&xmlContent[0]);
+        }
+        catch (const rapidxml::parse_error &e)
+        {
+            std::cout << "XML Parsing error: " << e.what() << std::endl;
+            return false;
         }
 
-        if (pid == 0)
+        // 创建 JSON 文档
+        outJsonDoc.SetObject();
+        Document::AllocatorType &allocator = outJsonDoc.GetAllocator();
+
+        // 获取 XML 根节点
+        xml_node<> *root = doc.first_node();
+        if (root)
         {
-            // 子进程
-            close(pipefd[0]);               // 关闭读端
-            dup2(pipefd[1], STDOUT_FILENO); // 将 stdout 重定向到管道
-            dup2(pipefd[1], STDERR_FILENO); // 将 stderr 重定向到管道
-            close(pipefd[1]);
+            // 将根节点转换为 JSON
+            Value root_json(kObjectType);
+            xml_to_json_recursive(root_json, root, allocator);
 
-            execl("/bin/sh", "sh", "-c", command.c_str(), NULL); // 执行命令
-            _exit(1);                                            // execl失败
+            // 将根节点添加到 JSON 文档
+            outJsonDoc.AddMember(Value(root->name(), allocator).Move(), root_json, allocator);
         }
-
-        // 父进程将读取管道，关闭写端
-        close(pipefd[1]);
-        pipeFp = fdopen(pipefd[0], "r");
-
-        if (pidOut)
-        {
-            *pidOut = pid;
-        }
-
-        return pipeFp;
+        return true;
+    }
+    static std::string getDefaultDataDir()
+    {
+        return "/home/";
     }
 
-    static int Kill(pid_t pid)
+private:
+    static void xml_to_json_recursive(rapidjson::Value &json, rapidxml::xml_node<> *node, rapidjson::Document::AllocatorType &allocator)
     {
-        return kill(pid, SIGTERM);
+        for (xml_node<> *cur_node = node->first_node(); cur_node; cur_node = cur_node->next_sibling())
+        {
+
+            // 检查是否需要跳过节点
+            xml_attribute<> *hide_attr = cur_node->first_attribute("hide");
+            if (hide_attr && std::string(hide_attr->value()) == "yes")
+            {
+                continue; // 如果 hide 属性值为 "true"，跳过该节点
+            }
+
+            // 检查是否已经有该节点名称的数组
+            Value *array = nullptr;
+            if (json.HasMember(cur_node->name()))
+            {
+                array = &json[cur_node->name()];
+            }
+            else
+            {
+                Value node_array(kArrayType); // 创建新的数组
+                json.AddMember(Value(cur_node->name(), allocator).Move(), node_array, allocator);
+                array = &json[cur_node->name()];
+            }
+
+            // 创建一个 JSON 对象代表当前节点
+            Value child_json(kObjectType);
+
+            // 处理节点的属性
+            for (xml_attribute<> *attr = cur_node->first_attribute(); attr; attr = attr->next_attribute())
+            {
+                Value attr_name(attr->name(), allocator);
+                Value attr_value(attr->value(), allocator);
+                child_json.AddMember(attr_name, attr_value, allocator);
+            }
+
+            // 递归处理子节点
+            xml_to_json_recursive(child_json, cur_node, allocator);
+
+            // 将当前节点对象添加到对应数组中
+            array->PushBack(child_json, allocator);
+        }
     }
-#endif
 };
 #endif

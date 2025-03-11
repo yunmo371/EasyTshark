@@ -13,6 +13,7 @@
 TsharkManager::TsharkManager(std::string currentFilePath)
 {
     tsharkPath = "/usr/bin/tshark";
+    editcapPath = "/usr/bin/editcap";
 }
 
 TsharkManager::~TsharkManager() {}
@@ -740,4 +741,71 @@ void TsharkManager::captureWorkThreadEntry(std::string adapterName)
     {
         LOG_F(ERROR, "Unknown exception in captureWorkThreadEntry.");
     }
+}
+
+bool TsharkManager::getPacketDetailInfo(uint32_t frameNumber, std::string &result)
+{
+    // 先通过editcap将这一帧数据包从文件中摘出来，然后再获取详情，这样会快一些
+    std::string tmpFilePath = MiscUtil::getDefaultDataDir() + MiscUtil::getRandomString(10) + ".pcap";
+    std::string splitCmd = editcapPath + " -r " + currentFilePath + " " + tmpFilePath + " " + std::to_string(frameNumber) + "-" + std::to_string(frameNumber);
+    if (!ProcessUtil::Exec(splitCmd))
+    {
+        LOG_F(ERROR, "Error in executing command: %s", splitCmd.c_str());
+        remove(tmpFilePath.c_str());
+        return false;
+    }
+
+    // 通过tshark获取指定数据包详细信息，输出格式为XML
+    // 启动'tshark -r ${currentFilePath} -T pdml'命令，获取指定数据包的详情
+    std::string cmd = tsharkPath + " -r " + tmpFilePath + " -T pdml";
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(ProcessUtil::PopenEx(cmd.c_str()), pclose);
+    if (!pipe)
+    {
+        std::cout << "Failed to run tshark command." << std::endl;
+        remove(tmpFilePath.c_str());
+        return false;
+    }
+
+    // 读取tshark输出
+    char buffer[8192] = {0};
+    std::string tsharkResult;
+    setvbuf(pipe.get(), NULL, _IOFBF, sizeof(buffer));
+    int count = 0;
+    while (fgets(buffer, sizeof(buffer) - 1, pipe.get()) != nullptr)
+    {
+        tsharkResult += buffer;
+        memset(buffer, 0, sizeof(buffer));
+    }
+
+    remove(tmpFilePath.c_str());
+
+    // 将xml内容转换为JSON
+    rapidjson::Document detailJson;
+    if (!MiscUtil::xml2JSON(tsharkResult, detailJson))
+    {
+        LOG_F(ERROR, "XML转JSON失败");
+        return false;
+    }
+
+    // 序列化为 JSON 字符串
+    rapidjson::StringBuffer stringBuffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(stringBuffer);
+    detailJson.Accept(writer);
+
+    // 设置数据包详情结果
+    // result = stringBuffer.GetString();
+    // 将字符串写入文件
+    std::string filename = "output.json";
+    std::ofstream outFile(filename, std::ios::out | std::ios::trunc);
+    if (!outFile.is_open()) {
+        std::cerr << "Failed to open file: " << filename << std::endl;
+        return -1;
+    }
+
+    outFile << stringBuffer.GetString();
+    outFile.close();
+
+    std::cout << "JSON data has been saved to " << filename << std::endl;
+
+    return true;
 }
