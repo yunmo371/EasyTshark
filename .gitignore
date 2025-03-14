@@ -1,2 +1,5 @@
-./build
-./logs/*
+# 忽略文件夹内容
+build/
+logs/
+bin/
+
