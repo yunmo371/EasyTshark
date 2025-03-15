@@ -5,21 +5,21 @@
 
 struct Packet
 {
-    int frame_number; // 数据包编号
-    std::string time; // 数据包的时间戳
+    int         frame_number; // 数据包编号
+    std::string time;         // 数据包的时间戳
     std::string src_mac;
     std::string dst_mac;
-    uint32_t cap_len;
-    uint32_t len;
+    uint32_t    cap_len;
+    uint32_t    len;
     std::string src_ip; // 源IP地址
     std::string src_location;
-    uint16_t src_port;
+    uint16_t    src_port;
     std::string dst_ip; // 目的IP地址
     std::string dst_location;
-    uint16_t dst_port;
+    uint16_t    dst_port;
     std::string protocol;
     std::string info; // 数据包的概要信息
-    uint32_t file_offset;
+    uint32_t    file_offset;
 };
 
 // PCAP全局文件头
@@ -28,7 +28,7 @@ struct PcapHeader
     uint32_t magic_number;
     uint16_t version_major;
     uint16_t version_minor;
-    int32_t thiszone;
+    int32_t  thiszone;
     uint32_t sigfigs;
     uint32_t snaplen;
     uint32_t network;
@@ -45,7 +45,7 @@ struct PacketHeader
 
 struct AdapterInfo
 {
-    int id;
+    int         id;
     std::string name;
     std::string remark;
 };

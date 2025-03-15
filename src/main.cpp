@@ -1,137 +1,83 @@
-#include <iomanip>
 #include <array>
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <thread>
 
 #include "loguru.hpp"
-#include "utils.hpp"
 #include "tsharkManager.hpp"
+#include "utils.hpp"
 
-void convertXmlNodeToJson(rapidxml::xml_node<>* xmlNode, rapidjson::Value& jsonNode, rapidjson::Document::AllocatorType& allocator) {
-    // 处理节点的属性
-    for (rapidxml::xml_attribute<>* attr = xmlNode->first_attribute(); attr; attr = attr->next_attribute()) {
-        jsonNode.AddMember(rapidjson::Value(attr->name(), allocator), rapidjson::Value(attr->value(), allocator), allocator);
-    }
 
-    // 处理子节点
-    bool hasChildNodes = false;
-    for (rapidxml::xml_node<>* child = xmlNode->first_node(); child; child = child->next_sibling()) {
-        hasChildNodes = true;
-        rapidjson::Value childJson(rapidjson::kObjectType);
-        convertXmlNodeToJson(child, childJson, allocator);
-        jsonNode.AddMember(rapidjson::Value(child->name(), allocator), childJson, allocator);
-    }
-
-    // 如果没有子节点，处理文本内容
-    if (!hasChildNodes && xmlNode->value_size() > 0) {
-        jsonNode.SetString(xmlNode->value(), allocator); // 修正：传递 Allocator
-    }
-}
-
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
+    // 初始化日志
+    std::string ts               = CommonUtil::get_timestamp();
+    std::string capture_log_name = "logs/catch_log_" + ts + ".txt";
+    loguru::init(argc, argv);
+    loguru::add_file(capture_log_name.c_str(), loguru::Append, loguru::Verbosity_MAX);
 
+    // 创建data目录（如果不存在）
+    std::string dataDir = "data";
+    std::string cmd     = "mkdir -p " + dataDir;
+    std::system(cmd.c_str());
 
-    // TsharkManager tsharkManager("/root/dev/learn_from_xuanyuan/output");
-    // std::string ts = CommonUtil::get_timestamp();
-    // std::string capture_log_name = "logs/catch_log_" + ts + ".txt";
-    // // std::string capture_log_name  = "logs/log_" + ts + ".txt";
-    // loguru::init(argc, argv);
-    // loguru::add_file(capture_log_name.c_str(), loguru::Append, loguru::Verbosity_MAX);
+    // 创建TsharkManager实例
+    TsharkManager tsharkManager("/root/dev/learn_from_xuanyuan/output");
 
-    // // 启动监控
-    // tsharkManager.startMonitorAdaptersFlowTrend();
+    // 获取网卡列表
+    std::vector<AdapterInfo> adapters = tsharkManager.getNetworkAdapterInfo();
+    std::cout << "可用网卡列表：" << std::endl;
+    for (const auto& adapter : adapters)
+    {
+        std::cout << adapter.id << ": " << adapter.name << " (" << adapter.remark << ")"
+                  << std::endl;
+    }
 
-    // // 睡眠10秒，等待监控网卡数据
-    // std::this_thread::sleep_for(std::chrono::seconds(10));
+    // 用户选择网卡
+    std::string adapterName;
+    std::cout << "请输入要监控的网卡名称: ";
+    std::cin >> adapterName;
 
-    // // 读取监控到的数据
-    // std::map<std::string, std::map<long, long>> trendData;
-    // tsharkManager.getAdaptersFlowTrendData(trendData);
+    // 用户输入抓包时间
+    int captureSeconds;
+    std::cout << "请输入抓包时间(秒): ";
+    std::cin >> captureSeconds;
 
-    // // 停止监控
-    // tsharkManager.stopMonitorAdaptersFlowTrend();
+    // 开始抓包
+    std::cout << "开始抓包，持续 " << captureSeconds << " 秒..." << std::endl;
+    tsharkManager.startCapture(adapterName);
 
-    // // 把获取到的数据打印输出
-    // rapidjson::Document resDoc;
-    // rapidjson::Document::AllocatorType &allocator = resDoc.GetAllocator();
-    // resDoc.SetObject();
-    // rapidjson::Value dataObject(rapidjson::kObjectType);
-    // for (const auto &adaptorItem : trendData)
-    // {
-    //     rapidjson::Value adaptorDataList(rapidjson::kArrayType);
-    //     for (const auto &timeItem : adaptorItem.second)
-    //     {
-    //         rapidjson::Value timeObj(rapidjson::kObjectType);
-    //         timeObj.AddMember("time", (unsigned int)timeItem.first, allocator);
-    //         timeObj.AddMember("bytes", (unsigned int)timeItem.second, allocator);
-    //         adaptorDataList.PushBack(timeObj, allocator);
-    //     }
+    // 等待指定的秒数
+    std::this_thread::sleep_for(std::chrono::seconds(captureSeconds));
 
-    //     dataObject.AddMember(rapidjson::StringRef(adaptorItem.first.c_str()), adaptorDataList, allocator);
-    // }
+    // 停止抓包
+    tsharkManager.stopCapture();
+    std::cout << "抓包已完成，保存到 capture.pcap" << std::endl;
 
-    // resDoc.AddMember("data", dataObject, allocator);
+    // 将PCAP文件转换为XML
+    std::string pcapFile = "capture.pcap";
+    std::string xmlFile  = dataDir + "/packets.xml";
+    if (tsharkManager.convertPcapToXml(pcapFile, xmlFile))
+    {
+        std::cout << "PCAP文件已成功转换为XML文件: " << xmlFile << std::endl;
 
-    // // 序列化为 JSON 字符串
-    // rapidjson::StringBuffer buffer;
-    // rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-    // resDoc.Accept(writer);
+        // 将XML文件转换为JSON
+        std::string jsonFile = dataDir + "/packets.json";
+        if (tsharkManager.convertXmlToJson(xmlFile, jsonFile))
+        {
+            std::cout << "处理完成！" << std::endl;
+        }
+        else
+        {
+            std::cerr << "XML转JSON失败" << std::endl;
+        }
+    }
+    else
+    {
+        std::cerr << "PCAP转XML失败" << std::endl;
+    }
 
-    // LOG_F(INFO, "网卡流量监控数据: %s", buffer.GetString());
-
-
-    // 读取xml文件并转换
-    std::ifstream xmlFile("/home/packets.xml");
-    std::string xmlContent((std::istreambuf_iterator<char>(xmlFile)), std::istreambuf_iterator<char>());
-    xmlFile.close();
-
-    // 使用 RapidXML 解析 XML
-    rapidxml::xml_document<> doc;
-    doc.parse<0>(&xmlContent[0]);
-
-    // 创建 JSON 文档并转换
-    rapidjson::Document jsonDoc;
-    jsonDoc.SetObject();
-    rapidjson::Document::AllocatorType& jsonAllocator = jsonDoc.GetAllocator(); // 重命名变量，避免冲突
-
-    // 转换根节点
-    convertXmlNodeToJson(doc.first_node(), jsonDoc, jsonAllocator);
-
-    // 序列化 JSON 数据
-    rapidjson::StringBuffer jsonBuffer; // 重命名变量，避免冲突
-    rapidjson::PrettyWriter<rapidjson::StringBuffer> jsonWriter(jsonBuffer); // 重命名变量，避免冲突
-    jsonDoc.Accept(jsonWriter);
-
-    // 保存 JSON 文件
-    std::ofstream jsonFile("output.json");
-    jsonFile << jsonBuffer.GetString();
-    jsonFile.close();
-
-    std::cout << "XML 文件已成功转换为 JSON 文件并保存到 output.json" << std::endl;
-
-    
-    // // 抓包
-    // tsharkManager.startCapture("eth0");
-    // std::string input;
-    // while (true)
-    // {
-    //     std::cout << "请输入q退出抓包: ";
-    //     std::cin >> input;
-    //     if (input == "q")
-    //     {
-    //         tsharkManager.stopCapture();
-    //         break;
-    //     }
-    // }
-    // // 解包
-    // std::string analysis_log_name = "logs/analysis_log_" + ts + ".txt";
-    // loguru::add_file(analysis_log_name.c_str(), loguru::Append, loguru::Verbosity_MAX);
-    // tsharkManager.analysisFile("capture.pcap");
-    // tsharkManager.printAllPackets();
-
-    // std::vector<AdapterInfo> adaptors = tsharkManager.getNetworkAdapterInfo();
-    // for (auto item : adaptors)
-    // {
-    //     LOG_F(INFO, "网卡[%d]: name[%s] remark[%s]", item.id, item.name.c_str(), item.remark.c_str());
-    // }
     return 0;
 }
