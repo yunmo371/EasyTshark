@@ -18,10 +18,15 @@ int main(int argc, char* argv[])
     loguru::init(argc, argv);
     loguru::add_file(capture_log_name.c_str(), loguru::Append, loguru::Verbosity_MAX);
 
-    // 创建data目录（如果不存在）
+    // 清空data目录
     std::string dataDir = "data";
-    std::string cmd     = "mkdir -p " + dataDir;
-    std::system(cmd.c_str());
+    std::string rmCmd = "rm -rf " + dataDir + "/*";
+    std::system(rmCmd.c_str());
+    std::cout << "已清空data目录" << std::endl;
+
+    // 创建data目录（如果不存在）
+    std::string mkdirCmd = "mkdir -p " + dataDir;
+    std::system(mkdirCmd.c_str());
 
     // 创建TsharkManager实例
     TsharkManager tsharkManager("/root/dev/learn_from_xuanyuan/output");
@@ -83,6 +88,9 @@ int main(int argc, char* argv[])
     {
         std::cerr << "PCAP转XML失败" << std::endl;
     }
+
+    // 执行map和unordered_map性能对比
+    CommonUtil::compareMapPerformance(10000);
 
     return 0;
 }

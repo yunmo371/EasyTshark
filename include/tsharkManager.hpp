@@ -76,9 +76,6 @@ public:
     // 获取所有网卡流量统计数据
     void getAdaptersFlowTrendData(std::map<std::string, std::map<long, long>>& flowTrendData);
 
-    // 获取指定数据包的详情内容
-    bool getPacketDetailInfo(uint32_t frameNumber, std::string& result);
-
     // 获取tshark路径
     std::string getTsharkPath() const
     {
@@ -157,38 +154,7 @@ public:
 
         return randomString;
     }
-    // XML转JSON
-    static bool xml2JSON(std::string xmlContent, rapidjson::Document& outJsonDoc)
-    {
-        // 解析 XML
-        rapidxml::xml_document<> doc;
-        try
-        {
-            doc.parse<0>(&xmlContent[0]);
-        }
-        catch (const rapidxml::parse_error& e)
-        {
-            std::cout << "XML Parsing error: " << e.what() << std::endl;
-            return false;
-        }
 
-        // 创建 JSON 文档
-        outJsonDoc.SetObject();
-        Document::AllocatorType& allocator = outJsonDoc.GetAllocator();
-
-        // 获取 XML 根节点
-        xml_node<>* root = doc.first_node();
-        if (root)
-        {
-            // 将根节点转换为 JSON
-            Value root_json(kObjectType);
-            xml_to_json_recursive(root_json, root, allocator);
-
-            // 将根节点添加到 JSON 文档
-            outJsonDoc.AddMember(Value(root->name(), allocator).Move(), root_json, allocator);
-        }
-        return true;
-    }
     static std::string getDefaultDataDir()
     {
         return "/home/";

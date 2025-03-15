@@ -3,18 +3,30 @@
 
 #include <memory>
 #include <random>
+#include <unordered_map>
+#include <map>
 #include <signal.h>
 #include <string>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 #include "ip2region/xdb_search.h"
+
+extern std::unordered_map<std::string, std::string> translationMap;
+extern std::map<std::string, std::string> translationMap2;
 
 class CommonUtil
 {
 public:
     static std::string get_timestamp();
     static std::string UTF8ToANSIString(const std::string& utf8Str);
+    static void translateShowNameFields(rapidjson::Value& value, rapidjson::Document::AllocatorType& allocator);
+    
+    // 性能对比函数
+    static void compareMapPerformance(int iterations = 10000);
 };
 
 class IP2RegionUtil
