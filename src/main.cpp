@@ -54,12 +54,17 @@ int main(int argc, char* argv[])
 
     // 停止抓包
     tsharkManager.stopCapture();
-    std::cout << "抓包已完成，保存到 capture.pcap" << std::endl;
+    
+    // 将capture.pcap移动到data目录
+    std::string pcapFile = "capture.pcap";
+    std::string dataPcapFile = dataDir + "/capture.pcap";
+    std::string mvCmd = "mv " + pcapFile + " " + dataPcapFile;
+    std::system(mvCmd.c_str());
+    std::cout << "抓包已完成，保存到 " << dataPcapFile << std::endl;
 
     // 将PCAP文件转换为XML
-    std::string pcapFile = "capture.pcap";
     std::string xmlFile  = dataDir + "/packets.xml";
-    if (tsharkManager.convertPcapToXml(pcapFile, xmlFile))
+    if (tsharkManager.convertPcapToXml(dataPcapFile, xmlFile))
     {
         std::cout << "PCAP文件已成功转换为XML文件: " << xmlFile << std::endl;
 

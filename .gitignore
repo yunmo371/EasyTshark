@@ -1,4 +1,4 @@
 # 忽略文件夹内容
 build/
-logs/
-data/
+output/data/*
+output/logs/*
