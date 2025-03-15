@@ -1,27 +1,29 @@
 #ifndef utils_hpp
 #define utils_hpp
 
+#include <map>
 #include <memory>
 #include <random>
-#include <unordered_map>
-#include <map>
 #include <signal.h>
 #include <string>
 #include <sys/types.h>
 #include <unistd.h>
+#include <unordered_map>
 
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
 #include "ip2region/xdb_search.h"
 #include "loguru.hpp"
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
+#include "tsharkDataType.hpp"
 
 // 前向声明SQLite结构体
 struct sqlite3;
-class Packet;
+// 不需要前向声明Packet，因为已经包含了tsharkDataType.hpp
+// class Packet;
 
 extern std::unordered_map<std::string, std::string> translationMap;
-extern std::map<std::string, std::string> translationMap2;
+extern std::map<std::string, std::string>           translationMap2;
 
 class CommonUtil
 {
@@ -31,7 +33,8 @@ public:
     // 将UTF-8字符串转换为ANSI字符串
     static std::string UTF8ToANSIString(const std::string& utf8Str);
     // 翻译字段
-    static void translateShowNameFields(rapidjson::Value& value, rapidjson::Document::AllocatorType& allocator);
+    static void translateShowNameFields(rapidjson::Value&                   value,
+                                        rapidjson::Document::AllocatorType& allocator);
     // map性能对比函数
     static void compareMapPerformance(int iterations = 10000);
 };
@@ -146,7 +149,8 @@ public:
     ~SQLiteUtil();
     bool createPacketTable();
     bool insertPacket(std::vector<std::shared_ptr<Packet>>& packets);
-    bool queryPacket(std::vector<std::shared_ptr<Packet>> &packetList);
+    bool queryPacket(std::vector<std::shared_ptr<Packet>>& packetList);
+
 private:
     sqlite3* db = nullptr;
 };

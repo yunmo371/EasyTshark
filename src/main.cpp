@@ -10,8 +10,6 @@
 #include "utils.hpp"
 
 
-
-
 int main(int argc, char* argv[])
 {
     // 初始化日志
@@ -46,12 +44,12 @@ int main(int argc, char* argv[])
                     << std::endl;
         }
 
-        // 用户选择网卡
+        // 选择网卡
         std::string adapterName;
         std::cout << "请输入要监控的网卡名称: ";
         std::cin >> adapterName;
 
-        // 用户输入抓包时间
+        // 输入抓包时间
         int captureSeconds;
         std::cout << "请输入抓包时间(秒): ";
         std::cin >> captureSeconds;
@@ -88,7 +86,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // 创建SQLite数据库并插入数据包
+    // 创建SQLite数据库并导入数据包
     std::string dbPath = dataDir + "/packets.db";
     SQLiteUtil sqliteUtil(dbPath);
     
@@ -101,11 +99,11 @@ int main(int argc, char* argv[])
         if (tsharkManager.analysisFile(dataPcapFile, packets)) {
             std::cout << "成功解析PCAP文件，共 " << packets.size() << " 个数据包" << std::endl;
             
-            // 将数据包插入到数据库
+            // 将数据包导入到数据库
             if (sqliteUtil.insertPacket(packets)) {
-                std::cout << "成功将数据包插入到数据库" << std::endl;
+                std::cout << "成功将数据包导入到数据库" << std::endl;
             } else {
-                std::cerr << "插入数据包到数据库失败" << std::endl;
+                std::cerr << "导入数据包到数据库失败" << std::endl;
             }
         } else {
             std::cerr << "解析PCAP文件失败" << std::endl;

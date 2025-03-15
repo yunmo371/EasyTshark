@@ -105,6 +105,7 @@ private:
 
     // 处理每一个数据包
     void processPacket(std::shared_ptr<Packet> packet);
+
 private:
     // 等待存储入库的数据
     std::vector<std::shared_ptr<Packet>> waitInsertPackets;
@@ -114,10 +115,10 @@ private:
 
     // 存储线程，负责将获取到的数据包和会话信息存储入库中
     std::shared_ptr<std::thread> storageThread;
-    
+
     // 数据库存储
     std::shared_ptr<SQLiteUtil> sqliteUtil;
-    
+
     // tshark路径
     std::string tsharkPath;
 

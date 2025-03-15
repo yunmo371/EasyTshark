@@ -1208,8 +1208,8 @@ LOGURU_ANONYMOUS_NAMESPACE_END
 
 #define CHECK_WITH_INFO_F(test, info, ...)                                                         \
     LOGURU_PREDICT_TRUE((test) == true)                                                            \
-        ? (void)0                                                                                  \
-        : loguru::log_and_abort(0, "CHECK FAILED:  " info "  ", __FILE__, __LINE__, ##__VA_ARGS__)
+    ? (void)0                                                                                      \
+    : loguru::log_and_abort(0, "CHECK FAILED:  " info "  ", __FILE__, __LINE__, ##__VA_ARGS__)
 
 /* Checked at runtime too. Will print error, then call fatal_handler (if any), then 'abort'.
    Note that the test must be boolean.
