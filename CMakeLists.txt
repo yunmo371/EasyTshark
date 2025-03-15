@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(learn_from_xuanyuan VERSION 1.0.0 LANGUAGES CXX)
+project(EasyTshark_xuanyuan VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -21,11 +21,11 @@ set(LIB_SOURCES
 )
 
 add_library(tshark_lib STATIC ${LIB_SOURCES})
-target_link_libraries(tshark_lib pthread dl)
+target_link_libraries(tshark_lib pthread dl sqlite3)
 
 # 主可执行文件
-add_executable(tshark_demo_main src/main.cpp)
-target_link_libraries(tshark_demo_main tshark_lib)
+add_executable(tshark_main src/main.cpp)
+target_link_libraries(tshark_main tshark_lib)
 
 # 添加测试子目录
 add_subdirectory(tests)

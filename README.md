@@ -1,28 +1,58 @@
-# 网络数据包捕获与分析工具
+# 网络数据包捕获与分析工具 - EasyTshark_xuanyuan
 
-本项目是一个基于tshark实现的网络数据包捕获与分析工具，可以实时抓取网络数据包，并将其转换为XML和JSON格式进行分析。
+EasyTshark_xuanyuan是一个基于tshark的网络数据包分析工具，提供实时抓包和离线分析功能，支持数据包的SQLite存储和XML/JSON格式转换。
 
 ## 功能特点
 
-1. 实时网络数据包捕获：可以指定网卡和捕获时间
-2. 数据包格式转换：将捕获的数据包转换为XML和JSON格式
-3. 跨平台支持：支持Linux、Windows和macOS系统
-4. 模块化设计：数据捕获和转换功能封装在独立的类中
-5. 完善的错误处理：对各种异常情况进行处理
-6. 全面的单元测试：确保代码质量和稳定性
+- **双模式操作**：
+  - 实时抓包模式：直接从网络接口捕获数据包
+  - 离线分析模式：分析已有的PCAP文件
 
-## 环境要求
+- **数据存储**：
+  - 将捕获的数据包存储到SQLite数据库
+  - 支持数据包的快速查询和检索
 
-- C++11兼容的编译器（GCC 4.8+, Clang 3.3+, MSVC 2015+）
+- **格式转换**：
+  - 将PCAP文件转换为XML格式
+  - 将XML文件转换为JSON格式，便于前端展示
+
+- **IP地理位置**：
+  - 自动解析数据包中的IP地址地理位置信息
+
+## 系统要求
+
+- Linux操作系统
+- tshark (Wireshark命令行工具)
+- SQLite3
+- C++11兼容的编译器
 - CMake 3.10+
-- Wireshark/tshark（用于数据包捕获和解析）
 
-## 编译与安装
+## 依赖库
 
-### 使用脚本构建
+- sqlite3：数据存储
+- loguru：日志记录
+- rapidjson：JSON处理
+- rapidxml：XML处理
+- ip2region：IP地理位置解析
 
-项目提供了便捷的构建脚本，支持多种选项：
+## 安装
 
+1. 安装必要的依赖：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake wireshark-dev libsqlite3-dev
+```
+
+2. 克隆仓库：
+
+```bash
+git clone git@github.com:hhhweihan/EasyTshark_xuanyuan.git
+cd EasyTshark_xuanyuan
+```
+
+3. 编译项目：
+- 脚本构建
 ```bash
 # 默认构建（清理构建目录，编译项目，运行测试并忽略测试失败）
 ./run.sh
@@ -43,157 +73,162 @@
 ./run.sh --help
 ```
 
-### 手动构建
+- 手动构建
 
 ```bash
-mkdir -p build
-cd build
+mkdir -p build && cd build
 cmake ..
 make
 ```
 
-### 依赖管理
-
-本项目使用以下第三方库：
-
-- RapidXML：用于XML解析
-- RapidJSON：用于JSON处理
-- loguru：用于日志记录
-- GoogleTest：用于单元测试（构建时自动下载）
-
-除GoogleTest外，这些依赖已包含在项目源码中，无需额外安装。
-
 ## 使用方法
 
-1. 运行程序：
+运行编译好的可执行文件：
 
 ```bash
-./output/tshark_demo_main
+./output/tshark_main
 ```
 
-2. 按照提示选择网卡和捕获时间
-3. 程序会自动捕获数据包，并将结果保存在data目录下：
-   - data/packets.xml：XML格式的数据包内容
-   - data/packets.json：JSON格式的数据包内容
+### 操作流程
+
+1. 选择操作模式：
+   - 输入`1`选择实时抓包模式
+   - 输入`2`选择离线分析模式
+
+2. 实时抓包模式：
+   - 选择要监控的网卡
+   - 设置抓包时间（秒）
+   - 等待抓包完成
+
+3. 离线分析模式：
+   - 输入PCAP文件的完整路径
+   - 系统会复制该文件到工作目录
+
+4. 数据处理（自动进行）：
+   - 创建SQLite数据库并存储数据包信息
+   - 将PCAP文件转换为XML格式
+   - 将XML文件转换为JSON格式
+
+5. 输出文件位于`data`目录：
+   - `capture.pcap`：捕获的数据包文件
+   - `packets.db`：SQLite数据库文件
+   - `packets.xml`：XML格式的数据包信息
+   - `packets.json`：JSON格式的数据包信息
 
 ## 单元测试
 
-本项目使用GoogleTest框架进行单元测试。测试用例位于`tests`目录下。
+项目使用Google Test框架进行单元测试，测试覆盖了核心功能和边缘情况。
 
-### 运行单元测试
+### 测试套件
+
+1. **TsharkManagerTest**：测试数据包管理器的基本功能
+   - 构造函数测试
+   - 网卡列表获取测试
+   - XML/JSON转换测试
+   - 离线分析功能测试
+   - 文件格式转换测试
+
+2. **SQLiteUtilTest**：测试SQLite数据库操作
+   - 数据库创建测试
+   - 数据包插入测试
+   - 数据包查询测试
+
+3. **CommonUtilTest**：测试通用工具函数
+   - 时间戳生成测试
+   - 字符串处理测试
+
+4. **ProcessUtilTest**：测试进程操作工具
+   - 进程执行测试
+   - 管道通信测试
+   - 进程终止测试
+
+5. **DataConversionTest**：测试数据格式转换
+   - PCAP到XML转换测试
+   - XML到JSON转换测试
+   - 节点转换测试
+
+6. **ErrorHandlingTest**：测试错误处理机制
+   - 无效文件处理测试
+   - 格式错误处理测试
+   - 权限问题处理测试
+
+7. **IP2RegionUtilTest**：测试IP地理位置解析
+   - 公网IP解析测试
+   - 内网IP解析测试
+   - 无效IP处理测试
+
+8. **IntegrationTest**：集成测试
+   - 完整离线分析工作流测试
+
+### 运行测试
+
+可以通过以下方式运行测试：
 
 ```bash
-# 使用脚本运行所有测试
-./run.sh --test
+# 运行所有测试
+./output/unit_tests
+
+# 运行特定测试套件
+./output/unit_tests --gtest_filter=TsharkManagerTest.*
 
 # 运行特定测试
-./run.sh --test=DataConversionTest.ConvertXmlToJson
+./output/unit_tests --gtest_filter=TsharkManagerTest.ConvertXmlToJson
 
-# 直接运行测试可执行文件
-./output/unit_tests
+# 生成XML格式的测试报告
+./output/unit_tests --gtest_output=xml:test_report.xml
 ```
 
-### 测试覆盖范围
+### 添加测试数据
 
-当前的单元测试覆盖以下组件：
+某些测试需要测试数据才能运行，可以通过以下方式准备：
 
-- TsharkManager：测试基本功能和网络适配器信息获取
-- DataConversion：测试数据格式转换功能
-- ErrorHandling：测试错误处理和边界情况
-- Performance：测试性能和稳定性（默认禁用）
-- CommonUtil：测试时间戳和当前时间获取功能
-- ProcessUtil：测试进程执行和管理功能
-
-## 开发者指南
-
-### IDE配置
-
-项目包含VSCode配置文件，位于`.vscode`目录下：
-- `c_cpp_properties.json`：配置C/C++扩展，包括头文件路径和编译器设置
-
-### 代码规范
-
-本项目使用clang-format进行代码格式化，规范定义在`.clang-format`文件中。主要规范包括：
-
-- 缩进：使用4个空格
-- 大括号风格：Allman风格（大括号独占一行）
-- 指针和引用对齐：左对齐
-- 命名空间缩进：所有命名空间内容都缩进
-- 行长度限制：100个字符
-
-### 安装和使用clang-format
-
-#### 安装clang-format
-
+1. 创建测试数据目录：
 ```bash
-# Ubuntu/Debian
-sudo apt-get update
-sudo apt-get install clang-format
-
-# CentOS/RHEL
-sudo yum install clang-tools-extra
-
-# macOS (使用Homebrew)
-brew install clang-format
-
-# Windows
-# 可以通过LLVM安装程序或Visual Studio扩展安装
+mkdir -p test_data
 ```
 
-#### 格式化代码
-
-可以使用以下命令格式化代码：
-
+2. 添加测试PCAP文件：
 ```bash
-# 格式化单个文件
-clang-format -i path/to/file.cpp
-
-# 格式化所有C++源文件和头文件
-find . -name "*.cpp" -o -name "*.hpp" | xargs clang-format -i
-
-# 使用特定版本的clang-format（如果系统上安装了多个版本）
-clang-format-10 -i path/to/file.cpp
+# 可以使用tshark生成测试PCAP文件
+tshark -c 10 -w test_data/test.pcap
 ```
 
-#### 在VSCode中使用clang-format
-
-1. 安装C/C++扩展
-2. 在设置中启用格式化：
-   ```json
-   "C_Cpp.formatting": "clangFormat",
-   "editor.formatOnSave": true
-   ```
-3. 使用快捷键格式化代码：`Shift+Alt+F`（Windows/Linux）或`Shift+Option+F`（macOS）
+3. 确保IP2Region数据库文件可用：
+```bash
+# 默认路径为/home/ip2region.xdb
+# 如果没有，测试会自动跳过相关测试
+```
 
 ## 项目结构
 
 ```
 .
-├── CMakeLists.txt          # CMake构建配置
-├── .clang-format           # 代码格式化规范
-├── LICENSE                 # MIT许可证
-├── run.sh                  # 构建和测试脚本
-├── .vscode/                # VSCode配置文件
-│   └── c_cpp_properties.json # C/C++扩展配置
-├── include/                # 头文件目录
-│   ├── tsharkDataType.hpp  # 数据类型定义
-│   ├── tsharkManager.hpp   # 数据包管理器
-│   └── utils.hpp           # 工具函数
-├── src/                    # 源文件目录
-│   ├── main.cpp            # 主程序入口
-│   ├── tsharkManager.cpp   # 数据包管理器实现
-│   └── utils.cpp           # 工具函数实现
-├── tests/                  # 单元测试目录
-│   ├── CMakeLists.txt      # 测试构建配置
-│   ├── test_tsharkManager.cpp # 基本功能测试
-│   ├── test_data_conversion.cpp # 数据转换测试
-│   ├── test_error_handling.cpp # 错误处理测试
-│   ├── test_performance.cpp # 性能测试
-│   └── test_utils.cpp      # 工具函数测试
-├── data/                   # 数据输出目录
-│   ├── packets.xml         # XML格式的数据包
-│   └── packets.json        # JSON格式的数据包
-└── logs/                   # 日志目录
+├── CMakeLists.txt # CMake构建配置
+├── .clang-format # 代码格式化规范
+├── LICENSE # MIT许可证
+├── run.sh # 构建和测试脚本
+├── .vscode/ # VSCode配置文件
+│ └── c_cpp_properties.json # C/C++扩展配置
+├── include/ # 头文件目录
+│ ├── tsharkDataType.hpp # 数据类型定义
+│ ├── tsharkManager.hpp # 数据包管理器
+│ └── utils.hpp # 工具函数
+├── src/ # 源文件目录
+│ ├── main.cpp # 主程序入口
+│ ├── tsharkManager.cpp # 数据包管理器实现
+│ └── utils.cpp # 工具函数实现
+├── tests/ # 单元测试目录
+│ ├── CMakeLists.txt # 测试构建配置
+│ ├── test_tsharkManager.cpp # 基本功能测试
+│ ├── test_data_conversion.cpp # 数据转换测试
+│ ├── test_error_handling.cpp # 错误处理测试
+│ ├── test_performance.cpp # 性能测试
+│ ├── test_offline_analysis.cpp # 离线分析测试
+│ └── test_utils.cpp # 工具函数测试
+├── data/ # 数据输出目录
+│ ├── packets.xml # XML格式的数据包
+│ └── packets.json # JSON格式的数据包
+└── logs/ # 日志目录
 ```
 
 ## 贡献指南

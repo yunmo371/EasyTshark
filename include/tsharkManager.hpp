@@ -5,9 +5,10 @@
 #include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
-#include "rapidxml.hpp"
-#include "rapidxml_utils.hpp"
+#include "rapidxml/rapidxml.hpp"
+#include "rapidxml/rapidxml_utils.hpp"
 #include "tsharkDataType.hpp"
+#include "utils.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -48,6 +49,9 @@ public:
 
     // 分析数据包文件
     bool analysisFile(std::string filePath);
+
+    // 分析数据包文件并返回数据包列表
+    bool analysisFile(std::string filePath, std::vector<std::shared_ptr<Packet>>& packets);
 
     // 打印所有数据包的信息
     void printAllPackets();
@@ -93,9 +97,27 @@ private:
     void convertXmlNodeToJson(rapidxml::xml_node<>* xmlNode, rapidjson::Value& jsonNode,
                               rapidjson::Document::AllocatorType& allocator);
 
+    // 解析行数据
     bool parseLine(std::string line, std::shared_ptr<Packet> packet);
 
+    // 存储线程
+    void storageThreadEntry();
+
+    // 处理每一个数据包
+    void processPacket(std::shared_ptr<Packet> packet);
 private:
+    // 等待存储入库的数据
+    std::vector<std::shared_ptr<Packet>> waitInsertPackets;
+
+    // 访问待存储数据的锁
+    std::mutex waitInsertPacketsLock;
+
+    // 存储线程，负责将获取到的数据包和会话信息存储入库中
+    std::shared_ptr<std::thread> storageThread;
+    
+    // 数据库存储
+    std::shared_ptr<SQLiteUtil> sqliteUtil;
+    
     // tshark路径
     std::string tsharkPath;
 
@@ -161,6 +183,7 @@ public:
     }
 
 private:
+    // 递归解析XML节点
     static void xml_to_json_recursive(rapidjson::Value& json, rapidxml::xml_node<>* node,
                                       rapidjson::Document::AllocatorType& allocator)
     {

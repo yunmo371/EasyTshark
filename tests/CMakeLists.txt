@@ -4,6 +4,7 @@ set(TEST_SOURCES
     test_data_conversion.cpp
     test_error_handling.cpp
     test_performance.cpp
+    test_offline_analysis.cpp
 )
 
 # 下载并包含GoogleTest源码

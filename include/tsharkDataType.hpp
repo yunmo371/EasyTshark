@@ -6,11 +6,11 @@
 struct Packet
 {
     int         frame_number; // 数据包编号
-    std::string time;         // 数据包的时间戳
-    std::string src_mac;
-    std::string dst_mac;
+    double time;         // 数据包的时间戳
     uint32_t    cap_len;
     uint32_t    len;
+    std::string src_mac;
+    std::string dst_mac;
     std::string src_ip; // 源IP地址
     std::string src_location;
     uint16_t    src_port;

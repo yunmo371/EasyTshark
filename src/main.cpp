@@ -10,6 +10,8 @@
 #include "utils.hpp"
 
 
+
+
 int main(int argc, char* argv[])
 {
     // 初始化日志
@@ -18,54 +20,99 @@ int main(int argc, char* argv[])
     loguru::init(argc, argv);
     loguru::add_file(capture_log_name.c_str(), loguru::Append, loguru::Verbosity_MAX);
 
-    // 清空data目录
+    // 清空data目录 & 创建data目录
     std::string dataDir = "data";
     std::string rmCmd = "rm -rf " + dataDir + "/*";
     std::system(rmCmd.c_str());
-    std::cout << "已清空data目录" << std::endl;
-
-    // 创建data目录（如果不存在）
     std::string mkdirCmd = "mkdir -p " + dataDir;
     std::system(mkdirCmd.c_str());
 
     // 创建TsharkManager实例
     TsharkManager tsharkManager("/root/dev/learn_from_xuanyuan/output");
 
-    // 获取网卡列表
-    std::vector<AdapterInfo> adapters = tsharkManager.getNetworkAdapterInfo();
-    std::cout << "可用网卡列表：" << std::endl;
-    for (const auto& adapter : adapters)
-    {
-        std::cout << adapter.id << ": " << adapter.name << " (" << adapter.remark << ")"
-                  << std::endl;
+    int mode;
+    std::cout << "请选择模式：\n1. 实时抓包\n2. 离线分析\n请输入选择 (1或2): ";
+    std::cin >> mode;
+
+    std::string dataPcapFile = dataDir + "/capture.pcap";
+    
+    if (mode == 1) {
+        // 抓包模式
+        std::vector<AdapterInfo> adapters = tsharkManager.getNetworkAdapterInfo();
+        std::cout << "可用网卡列表：" << std::endl;
+        for (const auto& adapter : adapters)
+        {
+            std::cout << adapter.id << ": " << adapter.name << " (" << adapter.remark << ")"
+                    << std::endl;
+        }
+
+        // 用户选择网卡
+        std::string adapterName;
+        std::cout << "请输入要监控的网卡名称: ";
+        std::cin >> adapterName;
+
+        // 用户输入抓包时间
+        int captureSeconds;
+        std::cout << "请输入抓包时间(秒): ";
+        std::cin >> captureSeconds;
+
+        // 开始抓包
+        std::cout << "开始抓包，持续 " << captureSeconds << " 秒..." << std::endl;
+        tsharkManager.startCapture(adapterName);
+
+        // 等待指定的秒数
+        std::this_thread::sleep_for(std::chrono::seconds(captureSeconds));
+
+        // 停止抓包
+        tsharkManager.stopCapture();
+        
+        std::string pcapFile = "capture.pcap";
+        std::string mvCmd = "mv " + pcapFile + " " + dataPcapFile;
+        std::system(mvCmd.c_str());
+        std::cout << "抓包已完成，保存到 " << dataPcapFile << std::endl;
+    } else if (mode == 2) {
+        // 离线分析模式
+        std::string pcapFilePath;
+        std::cout << "请输入PCAP文件路径: ";
+        std::cin >> pcapFilePath;
+        
+        // 复制文件到data目录
+        std::string cpCmd = "cp " + pcapFilePath + " " + dataPcapFile;
+        if (std::system(cpCmd.c_str()) != 0) {
+            std::cerr << "复制文件失败，请检查文件路径是否正确" << std::endl;
+            return 1;
+        }
+        std::cout << "文件已复制到 " << dataPcapFile << std::endl;
+    } else {
+        std::cerr << "无效的选择，程序退出" << std::endl;
+        return 1;
     }
 
-    // 用户选择网卡
-    std::string adapterName;
-    std::cout << "请输入要监控的网卡名称: ";
-    std::cin >> adapterName;
-
-    // 用户输入抓包时间
-    int captureSeconds;
-    std::cout << "请输入抓包时间(秒): ";
-    std::cin >> captureSeconds;
-
-    // 开始抓包
-    std::cout << "开始抓包，持续 " << captureSeconds << " 秒..." << std::endl;
-    tsharkManager.startCapture(adapterName);
-
-    // 等待指定的秒数
-    std::this_thread::sleep_for(std::chrono::seconds(captureSeconds));
-
-    // 停止抓包
-    tsharkManager.stopCapture();
+    // 创建SQLite数据库并插入数据包
+    std::string dbPath = dataDir + "/packets.db";
+    SQLiteUtil sqliteUtil(dbPath);
     
-    // 将capture.pcap移动到data目录
-    std::string pcapFile = "capture.pcap";
-    std::string dataPcapFile = dataDir + "/capture.pcap";
-    std::string mvCmd = "mv " + pcapFile + " " + dataPcapFile;
-    std::system(mvCmd.c_str());
-    std::cout << "抓包已完成，保存到 " << dataPcapFile << std::endl;
+    // 创建数据表
+    if (sqliteUtil.createPacketTable()) {
+        std::cout << "成功创建数据表" << std::endl;
+        
+        // 解析PCAP文件
+        std::vector<std::shared_ptr<Packet>> packets;
+        if (tsharkManager.analysisFile(dataPcapFile, packets)) {
+            std::cout << "成功解析PCAP文件，共 " << packets.size() << " 个数据包" << std::endl;
+            
+            // 将数据包插入到数据库
+            if (sqliteUtil.insertPacket(packets)) {
+                std::cout << "成功将数据包插入到数据库" << std::endl;
+            } else {
+                std::cerr << "插入数据包到数据库失败" << std::endl;
+            }
+        } else {
+            std::cerr << "解析PCAP文件失败" << std::endl;
+        }
+    } else {
+        std::cerr << "创建数据表失败" << std::endl;
+    }
 
     // 将PCAP文件转换为XML
     std::string xmlFile  = dataDir + "/packets.xml";
@@ -88,9 +135,6 @@ int main(int argc, char* argv[])
     {
         std::cerr << "PCAP转XML失败" << std::endl;
     }
-
-    // 执行map和unordered_map性能对比
-    CommonUtil::compareMapPerformance(10000);
 
     return 0;
 }

@@ -323,8 +323,8 @@ bool TsharkManager::analysisFile(std::string filePath)
         packet->src_location = IP2RegionUtil::getIpLocation(packet->src_ip);
         packet->dst_location = IP2RegionUtil::getIpLocation(packet->dst_ip);
 
-        // 将分析的数据包插入保存起来
-        allPackets.insert(std::make_pair<>(packet->frame_number, packet));
+        // 处理每一个数据包
+        processPacket(packet);
     }
     pclose(pipe);
 
@@ -332,6 +332,36 @@ bool TsharkManager::analysisFile(std::string filePath)
     currentFilePath = filePath;
 
     return true;
+}
+
+bool TsharkManager::analysisFile(std::string filePath, std::vector<std::shared_ptr<Packet>>& packets)
+{
+    // 清空现有数据
+    allPackets.clear();
+    
+    // 调用原有的analysisFile方法
+    if (!analysisFile(filePath)) {
+        return false;
+    }
+    
+    // 将allPackets中的数据复制到packets中
+    packets.clear();
+    for (const auto& pair : allPackets) {
+        packets.push_back(pair.second);
+    }
+    
+    return true;
+}
+
+void TsharkManager::processPacket(std::shared_ptr<Packet> packet)
+{
+    // 将分析的数据包插入保存起来
+    allPackets.insert(std::make_pair<>(packet->frame_number, packet));
+
+    // 等待入库
+    waitInsertPacketsLock.lock();
+    waitInsertPackets.push_back(packet);
+    waitInsertPacketsLock.unlock();
 }
 
 bool TsharkManager::parseLine(std::string line, std::shared_ptr<Packet> packet)
@@ -371,7 +401,7 @@ bool TsharkManager::parseLine(std::string line, std::shared_ptr<Packet> packet)
     if (fields.size() >= 16)
     {
         packet->frame_number = std::stoi(fields[0]);
-        packet->time         = fields[1];
+        packet->time         = std::stod(fields[1]);
         packet->len          = std::stoi(fields[2]);
         packet->cap_len      = std::stoi(fields[3]);
         packet->src_mac      = fields[4];
@@ -387,7 +417,7 @@ bool TsharkManager::parseLine(std::string line, std::shared_ptr<Packet> packet)
             packet->dst_port = std::stoi(fields[12].empty() ? fields[13] : fields[12]);
         }
         packet->protocol = fields[14];
-        packet->info     = fields[12];
+        packet->info     = fields[15];
         return true;
     }
     else
@@ -493,7 +523,7 @@ void TsharkManager::printAllPackets()
         pktObj.SetObject();
 
         pktObj.AddMember("frame_number", packet->frame_number, allocator);
-        pktObj.AddMember("timestamp", rapidjson::Value(packet->time.c_str(), allocator), allocator);
+        pktObj.AddMember("timestamp", packet->time, allocator);
         pktObj.AddMember("src_mac", rapidjson::Value(packet->src_mac.c_str(), allocator),
                          allocator);
         pktObj.AddMember("src_ip", rapidjson::Value(packet->src_ip.c_str(), allocator), allocator);
@@ -552,14 +582,9 @@ void TsharkManager::printAllPackets()
 bool TsharkManager::startCapture(std::string adapterName)
 {
     LOG_F(INFO, "即将开始抓包，网卡：%s", adapterName.c_str());
-
-    // 关闭停止标记
     stopFlag = false;
-
-    // 启动抓包线程
-    captureWorkThread = std::make_shared<std::thread>(&TsharkManager::captureWorkThreadEntry, this,
-                                                      "\"" + adapterName + "\"");
-
+    storageThread = std::make_shared<std::thread>(&TsharkManager::storageThreadEntry, this);
+    captureWorkThread = std::make_shared<std::thread>(&TsharkManager::captureWorkThreadEntry, this, "\"" + adapterName + "\"");
     return true;
 }
 
@@ -567,12 +592,18 @@ bool TsharkManager::stopCapture()
 {
     LOG_F(INFO, "即将停止抓包");
     stopFlag = true;
-
-    if (captureWorkThread->joinable())
-    {
+    
+    // 等待抓包处理线程退出
+    if (captureWorkThread && captureWorkThread->joinable()) {
         captureWorkThread->join();
+        captureWorkThread.reset();
     }
 
+    // 等待存储线程退出
+    if (storageThread && storageThread->joinable()) {
+        storageThread->join();
+        storageThread.reset();
+    }
     return true;
 }
 
@@ -968,4 +999,29 @@ bool TsharkManager::convertXmlToJson(const std::string& xmlFile, const std::stri
         std::cerr << "转换过程中发生异常: " << e.what() << std::endl;
         return false;
     }
+}
+
+void TsharkManager::storageThreadEntry()
+{
+    auto storageWork = [this]() {
+        waitInsertPacketsLock.lock();
+
+        // 检查数据包列表是否有新的数据可供存储
+        if (!waitInsertPackets.empty()) {
+            sqliteUtil->insertPacket(waitInsertPackets);
+            waitInsertPackets.clear();
+        }
+
+        waitInsertPacketsLock.unlock();
+    };
+
+    // 只要停止标记没有点亮，存储线程就要一直存在
+    while (!stopFlag) {
+        storageWork();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    // 稍等一下最后再执行一次，防止有遗漏的数据未入库
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    storageWork();
 }
