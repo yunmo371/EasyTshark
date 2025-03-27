@@ -1,6 +1,6 @@
-# EasyTshark_xuanyuan - 网络数据包捕获与分析工具
+# EasyTshark - 网络数据包捕获与分析工具
 
-EasyTshark_xuanyuan是一个基于tshark的网络数据包分析工具，提供实时抓包和离线分析功能，支持数据包的SQLite存储和XML/JSON格式转换。
+EasyTshark是一个基于tshark的网络数据包分析工具，提供实时抓包和离线分析功能，支持数据包的SQLite存储和XML/JSON格式转换。
 
 ## 功能特点
 
