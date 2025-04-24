@@ -1,6 +1,8 @@
 # EasyTshark - 网络数据包捕获与分析工具
 
-EasyTshark是一个基于tshark的网络数据包分析工具，提供实时抓包和离线分析功能，支持数据包的SQLite存储和XML/JSON格式转换。
+- EasyTshark是一个基于tshark的网络数据包分析工具，提供实时抓包和离线分析功能，支持数据包的SQLite存储和XML/JSON格式转换。
+- 糟糕，蹭了一波风哥流量；本项目是在风哥指导下完成的，目前是未完成版本；感兴趣的伙伴可以关注：[轩辕的编程宇宙](https://b23.tv/ANtGJ84)
+- 觉得项目写的好的兄弟们，留下一个star作为鼓励~
 
 ## 功能特点
 
@@ -47,8 +49,8 @@ sudo apt-get install -y build-essential cmake wireshark-dev libsqlite3-dev
 2. 克隆仓库：
 
 ```bash
-git clone git@github.com:hhhweihan/EasyTshark_xuanyuan.git
-cd EasyTshark_xuanyuan
+git clone git@github.com:hhhweihan/EasyTshark.git
+cd EasyTshark
 ```
 
 3. 编译项目：
