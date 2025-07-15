@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "utils.hpp"
+#include "processUtil.hpp"
 
 class CommonUtilTest : public ::testing::Test
 {
@@ -50,12 +51,14 @@ class ProcessUtilTest : public ::testing::Test
 protected:
     void SetUp() override
     {
-        // 设置测试环境
+        // 创建测试目录
+        system("mkdir -p /tmp/test_data");
     }
 
     void TearDown() override
     {
-        // 清理测试环境
+        // 清理测试目录
+        system("rm -rf /tmp/test_data");
     }
 };
 
@@ -63,19 +66,16 @@ protected:
 TEST_F(ProcessUtilTest, Exec)
 {
     // 执行一个简单的命令
-    bool result = ProcessUtil::Exec("echo 'test' > /tmp/test_output.txt");
+    bool result = ProcessUtil::Exec("echo 'test' > /tmp/test_data/test_output.txt");
     ASSERT_TRUE(result);
 
     // 验证命令执行结果
-    std::ifstream file("/tmp/test_output.txt");
+    std::ifstream file("/tmp/test_data/test_output.txt");
     std::string   content;
     std::getline(file, content);
     file.close();
 
     EXPECT_EQ(content, "test");
-
-    // 清理测试文件
-    std::remove("/tmp/test_output.txt");
 }
 
 // 测试PopenEx函数
@@ -89,13 +89,16 @@ TEST_F(ProcessUtilTest, PopenEx)
     EXPECT_GT(pid, 0);
 
     // 读取输出
-    char buffer[128];
+    char buffer[128] = {0};
     fgets(buffer, sizeof(buffer), pipe);
     pclose(pipe);
 
-    // 验证输出
+    // 验证输出（去除末尾的换行符）
     std::string output(buffer);
-    EXPECT_EQ(output, "test\n");
+    if (!output.empty() && output.back() == '\n') {
+        output.pop_back();
+    }
+    EXPECT_EQ(output, "test");
 }
 
 // 测试Kill函数
@@ -120,4 +123,195 @@ TEST_F(ProcessUtilTest, Kill)
 
     // 标记测试为通过，因为我们只关心Kill函数不会崩溃
     SUCCEED() << "Kill函数执行完成，不管结果如何";
+}
+
+class SQLiteUtilTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        // 设置测试环境
+        dbPath = "test.db";
+        std::remove(dbPath.c_str()); // 确保测试文件不存在
+    }
+
+    void TearDown() override
+    {
+        // 清理测试环境
+        std::remove(dbPath.c_str());
+    }
+
+    std::string dbPath;
+};
+
+TEST_F(SQLiteUtilTest, QueryPackets) {
+    // 创建SQLiteUtil实例
+    SQLiteUtil sqliteUtil(dbPath);
+    
+    // 创建表
+    EXPECT_TRUE(sqliteUtil.createPacketTable());
+    
+    // 创建测试数据包
+    std::vector<std::shared_ptr<Packet>> packets;
+    
+    // 数据包1
+    auto packet1 = std::make_shared<Packet>();
+    packet1->frame_number = 1;
+    packet1->src_mac = "00:11:22:33:44:55";
+    packet1->dst_mac = "AA:BB:CC:DD:EE:FF";
+    packet1->src_ip = "192.168.1.1";
+    packet1->src_location = "中国-北京";
+    packet1->src_port = 8080;
+    packet1->dst_ip = "192.168.1.2";
+    packet1->dst_location = "中国-上海";
+    packet1->dst_port = 80;
+    packets.push_back(packet1);
+    
+    // 数据包2
+    auto packet2 = std::make_shared<Packet>();
+    packet2->frame_number = 2;
+    packet2->src_mac = "11:22:33:44:55:66";
+    packet2->dst_mac = "BB:CC:DD:EE:FF:00";
+    packet2->src_ip = "192.168.2.1";
+    packet2->src_location = "中国-广州";
+    packet2->src_port = 8081;
+    packet2->dst_ip = "192.168.2.2";
+    packet2->dst_location = "中国-深圳";
+    packet2->dst_port = 443;
+    packets.push_back(packet2);
+    
+    // 插入测试数据
+    EXPECT_TRUE(sqliteUtil.insertPacket(packets));
+    
+    // 测试MAC地址查询
+    std::map<std::string, std::string> macCondition;
+    macCondition["mac_address"] = "00:11:22:*";
+    std::string jsonResult;
+    EXPECT_TRUE(sqliteUtil.queryPackets(macCondition, jsonResult));
+    EXPECT_TRUE(jsonResult.find("00:11:22:33:44:55") != std::string::npos);
+    EXPECT_TRUE(jsonResult.find("11:22:33:44:55:66") == std::string::npos);
+    
+    // 测试IP地址查询
+    std::map<std::string, std::string> ipCondition;
+    ipCondition["ip_address"] = "192.168.1.*";
+    EXPECT_TRUE(sqliteUtil.queryPackets(ipCondition, jsonResult));
+    EXPECT_TRUE(jsonResult.find("192.168.1.1") != std::string::npos);
+    EXPECT_TRUE(jsonResult.find("192.168.2.1") == std::string::npos);
+    
+    // 测试端口查询
+    std::map<std::string, std::string> portCondition;
+    portCondition["port"] = "80*";
+    EXPECT_TRUE(sqliteUtil.queryPackets(portCondition, jsonResult));
+    EXPECT_TRUE(jsonResult.find("\"src_port\":8080") != std::string::npos);
+    EXPECT_TRUE(jsonResult.find("\"src_port\":8081") != std::string::npos);
+    
+    // 测试归属地查询
+    std::map<std::string, std::string> locationCondition;
+    locationCondition["location"] = "中国-北*";
+    EXPECT_TRUE(sqliteUtil.queryPackets(locationCondition, jsonResult));
+    EXPECT_TRUE(jsonResult.find("中国-北京") != std::string::npos);
+    EXPECT_TRUE(jsonResult.find("中国-广州") == std::string::npos);
+    
+    // 测试多条件查询
+    std::map<std::string, std::string> multiCondition;
+    multiCondition["ip_address"] = "192.168.1.*";
+    multiCondition["port"] = "80*";
+    EXPECT_TRUE(sqliteUtil.queryPackets(multiCondition, jsonResult));
+    EXPECT_TRUE(jsonResult.find("192.168.1.1") != std::string::npos);
+    EXPECT_TRUE(jsonResult.find("192.168.2.1") == std::string::npos);
+}
+
+TEST_F(SQLiteUtilTest, SaveQueryResultToFile) {
+    // 创建SQLiteUtil实例
+    SQLiteUtil sqliteUtil(dbPath);
+    
+    // 创建表并插入测试数据
+    EXPECT_TRUE(sqliteUtil.createPacketTable());
+    
+    auto packet = std::make_shared<Packet>();
+    packet->frame_number = 1;
+    packet->src_location = "中国-湖南省-长沙市";
+    packet->dst_location = "中国-广东省-深圳市";
+    
+    std::vector<std::shared_ptr<Packet>> packets{packet};
+    EXPECT_TRUE(sqliteUtil.insertPacket(packets));
+    
+    // 创建测试目录
+    system("mkdir -p /tmp/test_data");
+    
+    // 测试查询和保存结果
+    std::map<std::string, std::string> conditions;
+    conditions["location"] = "湖南";
+    std::string jsonResult;
+    
+    // 执行查询
+    EXPECT_TRUE(sqliteUtil.queryPackets(conditions, jsonResult));
+    EXPECT_TRUE(jsonResult.find("中国-湖南省-长沙市") != std::string::npos);
+    
+    // 测试保存结果到文件
+    std::string testFile = "/tmp/test_data/query_result_test.json";
+    EXPECT_TRUE(sqliteUtil.saveQueryResultToFile(jsonResult, testFile));
+    
+    // 验证文件内容
+    std::ifstream file(testFile);
+    EXPECT_TRUE(file.good());
+    std::string fileContent((std::istreambuf_iterator<char>(file)), 
+                           std::istreambuf_iterator<char>());
+    EXPECT_EQ(fileContent, jsonResult);
+    
+    // 清理测试文件
+    file.close();
+}
+
+TEST_F(SQLiteUtilTest, LocationSearch) {
+    // 创建SQLiteUtil实例
+    SQLiteUtil sqliteUtil(dbPath);
+    
+    // 创建表并插入测试数据
+    EXPECT_TRUE(sqliteUtil.createPacketTable());
+    
+    std::vector<std::shared_ptr<Packet>> packets;
+    
+    // 添加测试数据包
+    auto packet1 = std::make_shared<Packet>();
+    packet1->frame_number = 1;
+    packet1->src_location = "中国-湖南省-长沙市";
+    packet1->dst_location = "中国-广东省-深圳市";
+    packets.push_back(packet1);
+    
+    auto packet2 = std::make_shared<Packet>();
+    packet2->frame_number = 2;
+    packet2->src_location = "中国-湖南省-株洲市";
+    packet2->dst_location = "中国-广东省-广州市";
+    packets.push_back(packet2);
+    
+    EXPECT_TRUE(sqliteUtil.insertPacket(packets));
+    
+    // 测试不同的查询场景
+    std::map<std::string, std::string> conditions;
+    std::string jsonResult;
+    
+    // 测试1：完整匹配
+    conditions["location"] = "中国-湖南省-长沙市";
+    EXPECT_TRUE(sqliteUtil.queryPackets(conditions, jsonResult));
+    EXPECT_TRUE(jsonResult.find("长沙市") != std::string::npos);
+    EXPECT_FALSE(jsonResult.find("株洲市") != std::string::npos);
+    
+    // 测试2：省份匹配
+    conditions["location"] = "湖南";
+    EXPECT_TRUE(sqliteUtil.queryPackets(conditions, jsonResult));
+    EXPECT_TRUE(jsonResult.find("长沙市") != std::string::npos);
+    EXPECT_TRUE(jsonResult.find("株洲市") != std::string::npos);
+    
+    // 测试3：城市匹配
+    conditions["location"] = "长沙";
+    EXPECT_TRUE(sqliteUtil.queryPackets(conditions, jsonResult));
+    EXPECT_TRUE(jsonResult.find("长沙市") != std::string::npos);
+    EXPECT_FALSE(jsonResult.find("株洲市") != std::string::npos);
+    
+    // 测试4：通配符匹配
+    conditions["location"] = "湖南*长沙";
+    EXPECT_TRUE(sqliteUtil.queryPackets(conditions, jsonResult));
+    EXPECT_TRUE(jsonResult.find("长沙市") != std::string::npos);
+    EXPECT_FALSE(jsonResult.find("株洲市") != std::string::npos);
 }

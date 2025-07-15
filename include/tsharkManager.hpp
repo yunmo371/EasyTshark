@@ -44,8 +44,12 @@ public:
 class TsharkManager
 {
 public:
-    TsharkManager(std::string currentFilePath);
+    TsharkManager(const std::string& outputPath);
     ~TsharkManager();
+
+    // 设置ip2region数据库路径
+    void setIp2RegionDbPath(const std::string& path) { ip2RegionDbPath = path; }
+    std::string getIp2RegionDbPath() const { return ip2RegionDbPath; }
 
     // 分析数据包文件
     bool analysisFile(std::string filePath);
@@ -81,10 +85,7 @@ public:
     void getAdaptersFlowTrendData(std::map<std::string, std::map<long, long>>& flowTrendData);
 
     // 获取tshark路径
-    std::string getTsharkPath() const
-    {
-        return tsharkPath;
-    }
+    std::string getTsharkPath() const { return tsharkPath; }
 
     // 将PCAP文件转换为XML格式
     bool convertPcapToXml(const std::string& pcapFile, const std::string& xmlFile);
@@ -106,54 +107,36 @@ private:
     // 处理每一个数据包
     void processPacket(std::shared_ptr<Packet> packet);
 
-private:
-    // 等待存储入库的数据
-    std::vector<std::shared_ptr<Packet>> waitInsertPackets;
-
-    // 访问待存储数据的锁
-    std::mutex waitInsertPacketsLock;
-
-    // 存储线程，负责将获取到的数据包和会话信息存储入库中
-    std::shared_ptr<std::thread> storageThread;
-
-    // 数据库存储
-    std::shared_ptr<SQLiteUtil> sqliteUtil;
-
-    // tshark路径
-    std::string tsharkPath;
-
-    // editcap路径
-    std::string editcapPath;
-
-    // 网卡信息
-    std::vector<AdapterInfo> networkAdapters;
-
-    // 当前分析的文件路径
-    std::string currentFilePath;
-
-    // 分析得到的所有数据包信息，key是数据包ID，value是数据包信息指针，方便根据编号获取指定数据包信息
-    std::unordered_map<uint32_t, std::shared_ptr<Packet>> allPackets;
-
     // 在线采集数据包的工作线程
     void captureWorkThreadEntry(std::string adapterName);
 
-    // 在线分析线程
-    std::shared_ptr<std::thread> captureWorkThread;
+private:
+    // 基本配置
+    std::string tsharkPath;
+    std::string editcapPath;
+    std::string outputPath;
+    std::string currentFilePath;
+    std::string ip2RegionDbPath;
 
-    // 是否停止抓包的标记
+    // 运行状态
+    bool isRunning;
     bool stopFlag;
-
-    // 后台流量趋势监控信息
-    std::map<std::string, AdapterMonitorInfo> adapterFlowTrendMonitorMap;
-
-    // 访问上面流量趋势数据的锁
-    std::recursive_mutex adapterFlowTrendMapLock;
-
-    // epoll文件描述符
+    pid_t childPid;
     int epollFd;
 
-    // 网卡流量监控的开始时间
-    long adapterFlowTrendMonitorStartTime = 0;
+    // 数据存储
+    std::vector<std::shared_ptr<Packet>> waitInsertPackets;
+    std::mutex waitInsertPacketsLock;
+    std::shared_ptr<std::thread> storageThread;
+    std::shared_ptr<SQLiteUtil> sqliteUtil;
+
+    // 网卡相关
+    std::vector<AdapterInfo> networkAdapters;
+    std::unordered_map<uint32_t, std::shared_ptr<Packet>> allPackets;
+    std::shared_ptr<std::thread> captureWorkThread;
+    std::map<std::string, AdapterMonitorInfo> adapterFlowTrendMonitorMap;
+    std::recursive_mutex adapterFlowTrendMapLock;
+    long adapterFlowTrendMonitorStartTime;
 };
 
 class MiscUtil

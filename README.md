@@ -23,6 +23,13 @@
 - **IP地理位置**：
   - 自动解析数据包中的IP地址地理位置信息
 
+### 查询功能
+- 支持Mac地址、IP地址、端口、归属地四类条件查询
+  
+### 查询结果导出
+- 支持将查询结果保存为JSON文件
+- 文件命名格式：`query_YYYYMMDDHHMMSSmmm.json`
+
 ## 系统要求
 
 - Linux操作系统
@@ -45,7 +52,7 @@
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake wireshark-dev libsqlite3-dev
+sudo apt-get install -y build-essential cmake wireshark-dev libsqlite3-dev tshark ccache clang-format
 ```
 
 2. 克隆仓库：
@@ -199,7 +206,7 @@ tshark -c 10 -w test_data/test.pcap
 
 3. 确保IP2Region数据库文件可用：
 ```bash
-# 默认路径为/home/ip2region.xdb
+# 默认路径为resources/ip2region.xdb
 # 如果没有，测试会自动跳过相关测试
 ```
 
@@ -234,16 +241,6 @@ tshark -c 10 -w test_data/test.pcap
 │ └── packets.json # JSON格式的数据包
 └── logs/ # 日志目录
 ```
-
-## 贡献指南
-
-欢迎贡献代码、报告问题或提出改进建议。请遵循以下步骤：
-
-1. Fork本仓库
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建Pull Request
 
 ## 许可证
 

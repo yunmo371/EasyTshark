@@ -1,16 +1,23 @@
+#include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <fstream>
 #include <iconv.h>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
-#include <map>
 
+#include "loguru.hpp"
+#include "rapidjson/document.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
+
+#include "ip2region/xdb_search.h"
 #include "tsharkDataType.hpp"
 #include "utils.hpp"
-#include "loguru.hpp"
 #include <sqlite3.h>
 
 
@@ -95,8 +102,7 @@ std::unordered_map<std::string, std::string> translationMap = {
     {"TCP payload", "TCP载荷"},
     {"UDP payload", "UDP载荷"},
     {"Hypertext Transfer Protocol", "超文本传输协议HTTP"},
-    {"Transport Layer Security", "传输层安全协议TLS"}
-};
+    {"Transport Layer Security", "传输层安全协议TLS"}};
 
 // 创建map版本的translationMap2，内容与translationMap相同
 std::map<std::string, std::string> translationMap2 = {
@@ -180,8 +186,7 @@ std::map<std::string, std::string> translationMap2 = {
     {"TCP payload", "TCP载荷"},
     {"UDP payload", "UDP载荷"},
     {"Hypertext Transfer Protocol", "超文本传输协议HTTP"},
-    {"Transport Layer Security", "传输层安全协议TLS"}
-};
+    {"Transport Layer Security", "传输层安全协议TLS"}};
 
 std::shared_ptr<xdb_search_t> IP2RegionUtil::xdbPtr;
 
@@ -280,60 +285,51 @@ std::string CommonUtil::UTF8ToANSIString(const std::string& utf8Str)
 
 std::string CommonUtil::get_timestamp()
 {
-    auto              now        = std::chrono::system_clock::now();
-    std::time_t       now_time_t = std::chrono::system_clock::to_time_t(now);
-    std::tm*          now_tm     = std::localtime(&now_time_t);
-    std::stringstream ss;
-    // 获取自纪元以来的总时间（纳秒级）
-    auto duration_since_epoch = now.time_since_epoch();
-    // 转换为秒
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration_since_epoch);
-    // 剩余的纳秒部分
-    auto nanoseconds =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(duration_since_epoch - seconds);
-    // 转换为微秒
-    long long microseconds = nanoseconds.count() / 1000;
+    auto now      = std::chrono::system_clock::now();
+    auto now_time = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
-    // 格式化时间字符串
-    ss << std::put_time(now_tm, "%Y-%m-%d %H:%M:%S") << "." << std::setw(6) << std::setfill('0')
-       << microseconds;
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&now_time), "%Y%m%d%H%M%S");
+    ss << std::setfill('0') << std::setw(3) << ms.count();
 
     return ss.str();
 }
 
 
-void CommonUtil::translateShowNameFields(rapidjson::Value& value, rapidjson::Document::AllocatorType& allocator)
+void CommonUtil::translateShowNameFields(rapidjson::Value&                   value,
+                                         rapidjson::Document::AllocatorType& allocator)
 {
-    // 如果是对象，检查并翻译 showname 字段
-    if (value.IsObject()) {
-        if (value.HasMember("showname") && value["showname"].IsString()) {
+    if (value.IsObject())
+    {
+        if (value.HasMember("showname") && value["showname"].IsString())
+        {
             std::string showname = value["showname"].GetString();
 
-            // 遍历 translationMap 查找静态部分并替换
-            for (const auto& pair : translationMap) {
-                const std::string& key = pair.first;
+            for (const auto& pair : translationMap)
+            {
+                const std::string& key         = pair.first;
                 const std::string& translation = pair.second;
 
-                // 检查字段A中是否包含translationMap中的key（静态部分）
-                if (showname.find(key) == 0) {
-                    // 替换静态部分
+                if (showname.find(key) == 0)
+                {
                     showname.replace(0, key.length(), translation);
                     value["showname"].SetString(showname.c_str(), allocator);
                     break;
                 }
             }
         }
-        else if (value.HasMember("show") && value["show"].IsString()) {
+        else if (value.HasMember("show") && value["show"].IsString())
+        {
             std::string showname = value["show"].GetString();
 
-            // 遍历 translationMap 查找静态部分并替换
-            for (const auto& pair : translationMap) {
-                const std::string& key = pair.first;
+            for (const auto& pair : translationMap)
+            {
+                const std::string& key         = pair.first;
                 const std::string& translation = pair.second;
 
-                // 检查字段A中是否包含translationMap中的key（静态部分）
-                if (showname.find(key) == 0) {
-                    // 替换静态部分
+                if (showname.find(key) == 0)
+                {
                     showname.replace(0, key.length(), translation);
                     value["show"].SetString(showname.c_str(), allocator);
                     break;
@@ -341,84 +337,109 @@ void CommonUtil::translateShowNameFields(rapidjson::Value& value, rapidjson::Doc
             }
         }
 
-        // 如果有 "field" 字段，递归处理
-        if (value.HasMember("field") && value["field"].IsArray()) {
-            // 直接引用 "field" 数组中的每个元素进行递归翻译
+        // 有 "field" 字段，递归处理
+        if (value.HasMember("field") && value["field"].IsArray())
+        {
             rapidjson::Value& fieldArray = value["field"];
-            for (auto& field : fieldArray.GetArray()) {
-                translateShowNameFields(field, allocator);  // 递归处理每个 field
+            for (auto& field : fieldArray.GetArray())
+            {
+                translateShowNameFields(field, allocator);
             }
         }
     }
-    // 如果是数组，递归遍历每个元素
-    else if (value.IsArray()) {
-        for (auto& item : value.GetArray()) {
-            translateShowNameFields(item, allocator);  // 递归处理每个元素
+    else if (value.IsArray())
+    {
+        for (auto& item : value.GetArray())
+        {
+            translateShowNameFields(item, allocator);
         }
     }
 }
 
 // 性能对比函数实现
-void CommonUtil::compareMapPerformance(int iterations) {
-    try {
+void CommonUtil::compareMapPerformance(int iterations)
+{
+    try
+    {
         std::string key = "Interface id";
-        
+
         // unordered_map
         std::string result;
-        auto start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < iterations; ++i) {
+        auto        start = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < iterations; ++i)
+        {
             auto it = translationMap.find(key);
-            if (it != translationMap.end()) {
+            if (it != translationMap.end())
+            {
                 result = it->second;
             }
         }
         auto end = std::chrono::high_resolution_clock::now();
-        auto unordered_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        
+        auto unordered_duration =
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+
         // map
         start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < iterations; ++i) {
+        for (int i = 0; i < iterations; ++i)
+        {
             auto it = translationMap2.find(key);
-            if (it != translationMap2.end()) {
+            if (it != translationMap2.end())
+            {
                 result = it->second;
             }
         }
         end = std::chrono::high_resolution_clock::now();
-        auto map_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        
-        std::cout << "unordered_map 查询" << iterations << "次耗时: " << unordered_duration << " us" << std::endl;
+        auto map_duration =
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+
+        std::cout << "unordered_map 查询" << iterations << "次耗时: " << unordered_duration << " us"
+                  << std::endl;
         std::cout << "map 查询" << iterations << "次耗时: " << map_duration << " us" << std::endl;
-        
-        if (unordered_duration > 0) {
-            std::cout << "对比结果: unordered_map是map的" << static_cast<double>(map_duration) / unordered_duration << "倍速度" << std::endl;
-        } else {
+
+        if (unordered_duration > 0)
+        {
+            std::cout << "对比结果: unordered_map是map的"
+                      << static_cast<double>(map_duration) / unordered_duration << "倍速度"
+                      << std::endl;
+        }
+        else
+        {
             std::cout << "无法计算性能比较，unordered_map耗时为0" << std::endl;
         }
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e)
+    {
         std::cerr << "性能比较过程中发生异常: " << e.what() << std::endl;
-    } catch (...) {
+    }
+    catch (...)
+    {
         std::cerr << "性能比较过程中发生未知异常" << std::endl;
     }
 }
 
-SQLiteUtil::SQLiteUtil(const std::string& dbname){
+SQLiteUtil::SQLiteUtil(const std::string& dbname)
+{
     // 打开数据库连接
     int rc = sqlite3_open(dbname.c_str(), &db);
-    if (rc != SQLITE_OK) {
+    if (rc != SQLITE_OK)
+    {
         LOG_F(ERROR, "Failed to open database: %s", sqlite3_errmsg(db));
         sqlite3_close(db);
         throw std::runtime_error("Failed to open database");
     }
 }
 
-SQLiteUtil::~SQLiteUtil(){
-    if (db) {
+SQLiteUtil::~SQLiteUtil()
+{
+    if (db)
+    {
         sqlite3_close(db);
         db = nullptr;
     }
 }
 
-bool SQLiteUtil::createPacketTable(){
+bool SQLiteUtil::createPacketTable()
+{
     // 检查表是否存在，若不存在则创建
     std::string createTableSQL = R"(
         CREATE TABLE IF NOT EXISTS t_packets (
@@ -440,12 +461,14 @@ bool SQLiteUtil::createPacketTable(){
         );
     )";
 
-    if (db == nullptr) {
+    if (db == nullptr)
+    {
         LOG_F(ERROR, "Database connection is not initialized");
         return false;
     }
 
-    if (sqlite3_exec(db, createTableSQL.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK) {
+    if (sqlite3_exec(db, createTableSQL.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
+    {
         LOG_F(ERROR, "Failed to create table t_packets: %s", sqlite3_errmsg(db));
         return false;
     }
@@ -453,7 +476,8 @@ bool SQLiteUtil::createPacketTable(){
     return true;
 }
 
-bool SQLiteUtil::insertPacket(std::vector<std::shared_ptr<Packet>>& packets){
+bool SQLiteUtil::insertPacket(std::vector<std::shared_ptr<Packet>>& packets)
+{
     // 实现插入数据的逻辑
     // 开启事务
     sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
@@ -467,14 +491,16 @@ bool SQLiteUtil::insertPacket(std::vector<std::shared_ptr<Packet>>& packets){
     )";
 
     sqlite3_stmt* stmt;
-    if (sqlite3_prepare_v2(db, insertSQL.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(db, insertSQL.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+    {
         LOG_F(ERROR, "Failed to prepare insert statement: %s", sqlite3_errmsg(db));
         return false;
     }
 
     // 遍历列表并插入数据
     bool hasError = false;
-    for (const auto& packet : packets) {
+    for (const auto& packet : packets)
+    {
         sqlite3_bind_int(stmt, 1, packet->frame_number);
         sqlite3_bind_double(stmt, 2, packet->time);
         sqlite3_bind_int(stmt, 3, packet->cap_len);
@@ -491,7 +517,8 @@ bool SQLiteUtil::insertPacket(std::vector<std::shared_ptr<Packet>>& packets){
         sqlite3_bind_text(stmt, 14, packet->info.c_str(), -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 15, packet->file_offset);
 
-        if (sqlite3_step(stmt) != SQLITE_DONE) {
+        if (sqlite3_step(stmt) != SQLITE_DONE)
+        {
             LOG_F(ERROR, "Failed to execute insert statement: %s", sqlite3_errmsg(db));
             hasError = true;
             break;
@@ -503,13 +530,17 @@ bool SQLiteUtil::insertPacket(std::vector<std::shared_ptr<Packet>>& packets){
     // 释放语句
     sqlite3_finalize(stmt);
 
-    if (!hasError) {
+    if (!hasError)
+    {
         // 结束事务
-        if (sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr) != SQLITE_OK) {
+        if (sqlite3_exec(db, "COMMIT;", nullptr, nullptr, nullptr) != SQLITE_OK)
+        {
             LOG_F(ERROR, "Failed to commit transaction: %s", sqlite3_errmsg(db));
             hasError = true;
         }
-    } else {
+    }
+    else
+    {
         // 如果有错误，回滚事务
         sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, nullptr);
     }
@@ -517,35 +548,221 @@ bool SQLiteUtil::insertPacket(std::vector<std::shared_ptr<Packet>>& packets){
     return !hasError;
 }
 
-bool SQLiteUtil::queryPacket(std::vector<std::shared_ptr<Packet>> &packetList){
+bool SQLiteUtil::queryPacket(std::vector<std::shared_ptr<Packet>>& packetList)
+{
     sqlite3_stmt *stmt = nullptr, *countStmt = nullptr;
-    std::string sql = "select * from t_packets";
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    std::string   sql = "select * from t_packets";
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+    {
         LOG_F(ERROR, "Failed to prepare statement: ");
         return false;
     }
 
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
         std::shared_ptr<Packet> packet = std::make_shared<Packet>();
-        packet->frame_number = sqlite3_column_int(stmt, 0);
-        packet->time = sqlite3_column_double(stmt, 1);
-        packet->cap_len = sqlite3_column_int(stmt, 2);
-        packet->len = sqlite3_column_int(stmt, 3);
-        packet->src_mac = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
-        packet->dst_mac = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
-        packet->src_ip = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        packet->frame_number           = sqlite3_column_int(stmt, 0);
+        packet->time                   = sqlite3_column_double(stmt, 1);
+        packet->cap_len                = sqlite3_column_int(stmt, 2);
+        packet->len                    = sqlite3_column_int(stmt, 3);
+        packet->src_mac      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        packet->dst_mac      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        packet->src_ip       = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
         packet->src_location = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
-        packet->src_port = sqlite3_column_int(stmt, 8);
-        packet->dst_ip = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
+        packet->src_port     = sqlite3_column_int(stmt, 8);
+        packet->dst_ip       = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
         packet->dst_location = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
-        packet->dst_port = sqlite3_column_int(stmt, 11);
-        packet->protocol = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
-        packet->info = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
-        packet->file_offset = sqlite3_column_int(stmt, 14);
+        packet->dst_port     = sqlite3_column_int(stmt, 11);
+        packet->protocol     = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+        packet->info         = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
+        packet->file_offset  = sqlite3_column_int(stmt, 14);
         packetList.push_back(packet);
     }
 
     sqlite3_finalize(stmt);
 
     return true;
+}
+
+std::string SQLiteUtil::buildFuzzyQuery(const std::map<std::string, std::string>& conditions)
+{
+    std::string sql = "SELECT * FROM t_packets WHERE 1=1";
+
+    for (const auto& condition : conditions)
+    {
+        if (condition.first == "mac_address")
+        {
+            std::string pattern = condition.second;
+            std::replace(pattern.begin(), pattern.end(), '*', '%');
+            sql += " AND (src_mac LIKE '" + pattern + "' OR dst_mac LIKE '" + pattern + "')";
+        }
+        else if (condition.first == "ip_address")
+        {
+            std::string pattern = condition.second;
+            std::replace(pattern.begin(), pattern.end(), '*', '%');
+            sql += " AND (src_ip LIKE '" + pattern + "' OR dst_ip LIKE '" + pattern + "')";
+        }
+        else if (condition.first == "port")
+        {
+            std::string pattern = condition.second;
+            std::replace(pattern.begin(), pattern.end(), '*', '%');
+            // 将字符串转换为数字进行比较
+            if (pattern.find('%') == std::string::npos)
+            {
+                sql += " AND (src_port = " + pattern + " OR dst_port = " + pattern + ")";
+            }
+            else
+            {
+                sql += " AND (CAST(src_port AS TEXT) LIKE '" + pattern +
+                       "' OR CAST(dst_port AS TEXT) LIKE '" + pattern + "')";
+            }
+        }
+        else if (condition.first == "location")
+        {
+            std::string pattern = condition.second;
+            std::replace(pattern.begin(), pattern.end(), '*', '%');
+            // pattern前后都添加%，实现任意位置匹配
+            if (pattern.find('%') == std::string::npos)
+            {
+                pattern = "%" + pattern + "%";
+            }
+            sql +=
+                " AND (src_location LIKE '" + pattern + "' OR dst_location LIKE '" + pattern + "')";
+        }
+    }
+
+    // sql += " ORDER BY frame_number ASC LIMIT 1000"; // 限制返回结果数量
+    return sql;
+}
+
+std::string SQLiteUtil::packetsToJson(std::vector<std::shared_ptr<Packet>>& packets)
+{
+    rapidjson::Document document;
+    document.SetObject();
+    rapidjson::Document::AllocatorType& allocator = document.GetAllocator();
+
+    document.AddMember("total", rapidjson::Value((int)packets.size()), allocator);
+
+    rapidjson::Value packetsArray(rapidjson::kArrayType);
+
+    for (const auto& packet : packets)
+    {
+        rapidjson::Value packetObj(rapidjson::kObjectType);
+
+        packetObj.AddMember("frame_number", rapidjson::Value(packet->frame_number), allocator);
+        packetObj.AddMember("time", rapidjson::Value(packet->time), allocator);
+        packetObj.AddMember("cap_len", rapidjson::Value(packet->cap_len), allocator);
+        packetObj.AddMember("len", rapidjson::Value(packet->len), allocator);
+        packetObj.AddMember("src_mac", rapidjson::Value(packet->src_mac.c_str(), allocator),
+                            allocator);
+        packetObj.AddMember("dst_mac", rapidjson::Value(packet->dst_mac.c_str(), allocator),
+                            allocator);
+        packetObj.AddMember("src_ip", rapidjson::Value(packet->src_ip.c_str(), allocator),
+                            allocator);
+        packetObj.AddMember("src_location",
+                            rapidjson::Value(packet->src_location.c_str(), allocator), allocator);
+        packetObj.AddMember("src_port", rapidjson::Value(packet->src_port), allocator);
+        packetObj.AddMember("dst_ip", rapidjson::Value(packet->dst_ip.c_str(), allocator),
+                            allocator);
+        packetObj.AddMember("dst_location",
+                            rapidjson::Value(packet->dst_location.c_str(), allocator), allocator);
+        packetObj.AddMember("dst_port", rapidjson::Value(packet->dst_port), allocator);
+        packetObj.AddMember("protocol", rapidjson::Value(packet->protocol.c_str(), allocator),
+                            allocator);
+        packetObj.AddMember("info", rapidjson::Value(packet->info.c_str(), allocator), allocator);
+        packetObj.AddMember("file_offset", rapidjson::Value(packet->file_offset), allocator);
+
+        packetsArray.PushBack(packetObj, allocator);
+    }
+
+    document.AddMember("packets", packetsArray, allocator);
+
+    rapidjson::StringBuffer                    buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    document.Accept(writer);
+
+    return buffer.GetString();
+}
+
+bool SQLiteUtil::queryPackets(const std::map<std::string, std::string>& conditions,
+                              std::string&                              jsonResult)
+{
+    std::string sql = buildFuzzyQuery(conditions);
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        LOG_F(ERROR, "Failed to prepare query statement: %s", sqlite3_errmsg(db));
+        return false;
+    }
+
+    std::vector<std::shared_ptr<Packet>> packets;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        std::shared_ptr<Packet> packet = std::make_shared<Packet>();
+        packet->frame_number           = sqlite3_column_int(stmt, 0);
+        packet->time                   = sqlite3_column_double(stmt, 1);
+        packet->cap_len                = sqlite3_column_int(stmt, 2);
+        packet->len                    = sqlite3_column_int(stmt, 3);
+        packet->src_mac      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        packet->dst_mac      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        packet->src_ip       = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        packet->src_location = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7));
+        packet->src_port     = sqlite3_column_int(stmt, 8);
+        packet->dst_ip       = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
+        packet->dst_location = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
+        packet->dst_port     = sqlite3_column_int(stmt, 11);
+        packet->protocol     = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 12));
+        packet->info         = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 13));
+        packet->file_offset  = sqlite3_column_int(stmt, 14);
+        packets.push_back(packet);
+    }
+
+    sqlite3_finalize(stmt);
+
+    jsonResult = packetsToJson(packets);
+
+    return true;
+}
+
+/**
+ * @brief 将查询结果保存到JSON文件
+ *
+ * @param jsonResult JSON格式的查询结果字符串
+ * @param filePath 保存文件的路径
+ * @return true 保存成功
+ * @return false 保存失败
+ *
+ * @note 如果目标文件已存在，将会被覆盖
+ */
+bool SQLiteUtil::saveQueryResultToFile(const std::string& jsonResult, const std::string& filePath)
+{
+    try
+    {
+        std::ofstream jsonFileStream(filePath);
+        if (!jsonFileStream.is_open())
+        {
+            LOG_F(ERROR, "无法打开文件进行写入: %s", filePath.c_str());
+            return false;
+        }
+
+        jsonFileStream << jsonResult;
+        jsonFileStream.flush();
+        if (jsonFileStream.fail())
+        {
+            LOG_F(ERROR, "写入文件时发生错误: %s", filePath.c_str());
+            jsonFileStream.close();
+            return false;
+        }
+
+        jsonFileStream.close();
+
+        LOG_F(INFO, "查询结果已成功保存到文件: %s", filePath.c_str());
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_F(ERROR, "保存查询结果时发生错误: %s", e.what());
+        return false;
+    }
 }
