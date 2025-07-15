@@ -197,7 +197,7 @@ TEST_F(TsharkManagerTest, FileConversion) {
 TEST(IP2RegionUtilTest, IPLocationLookup) {
     // 初始化IP2RegionUtil
     // 注意：这个测试需要有效的IP2Region数据库文件
-    std::string dbPath = "/home/ip2region.xdb";
+    std::string dbPath = "resources/ip2region.xdb";
     
     std::ifstream dbFile(dbPath);
     if (!dbFile.good()) {

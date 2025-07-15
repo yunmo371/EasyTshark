@@ -9,18 +9,21 @@
 #include "loguru.hpp"
 #include "tsharkManager.hpp"
 #include "utils.hpp"
+#include "processUtil.hpp"
 
-TsharkManager::TsharkManager(std::string currentFilePath)
+TsharkManager::TsharkManager(const std::string& outputPath)
+    : outputPath(outputPath), isRunning(false), stopFlag(false), childPid(-1), epollFd(-1),
+      adapterFlowTrendMonitorStartTime(0)
 {
-    tsharkPath  = "/usr/bin/tshark";
+    tsharkPath = "/usr/bin/tshark";
     editcapPath = "/usr/bin/editcap";
+    ip2RegionDbPath = "resources/ip2region.xdb";
 }
 
 TsharkManager::~TsharkManager() {}
 
 void TsharkManager::stopMonitorAdaptersFlowTrend()
 {
-    // 停止监控所有网卡流量统计数据
     std::unique_lock<std::recursive_mutex> lock(adapterFlowTrendMapLock);
 
     // 先杀死对应的tshark进程
@@ -37,7 +40,6 @@ void TsharkManager::stopMonitorAdaptersFlowTrend()
             int pipeFd = fileno(adapterPipePair.second.monitorTsharkPipe);
             if (pipeFd != -1)
             {
-                // 从 epoll 中移除
                 epoll_ctl(epollFd, EPOLL_CTL_DEL, pipeFd, nullptr);
                 // 关闭管道
                 pclose(adapterPipePair.second.monitorTsharkPipe);
@@ -45,10 +47,8 @@ void TsharkManager::stopMonitorAdaptersFlowTrend()
         }
         LOG_F(INFO, "网卡：%s 流量监控已停止", adapterPipePair.first.c_str());
     }
-    // 清空记录的流量趋势数据
     adapterFlowTrendMonitorMap.clear();
 
-    // 关闭 epoll 文件描述符
     if (epollFd != -1)
     {
         close(epollFd);
@@ -124,8 +124,7 @@ void TsharkManager::startMonitorAdaptersFlowTrend()
         LOG_F(INFO, "Starting tshark for adapter: %s", adapter.name.c_str());
 
         pid_t tsharkPid = 0;
-        FILE* pipe      = ProcessUtil::PopenEx(tsharkCmd.c_str(),
-                                          &tsharkPid); // 假设 ProcessUtil::PopenEx 是自定义函数
+        FILE* pipe      = ProcessUtil::PopenEx(tsharkCmd.c_str(), &tsharkPid, "r");
         if (!pipe)
         {
             LOG_F(ERROR, "Failed to start tshark for adapter: %s", adapter.name.c_str());
@@ -137,7 +136,7 @@ void TsharkManager::startMonitorAdaptersFlowTrend()
         int flags  = fcntl(pipeFd, F_GETFL, 0);
         fcntl(pipeFd, F_SETFL, flags | O_NONBLOCK);
 
-        // 将管道注册到 epoll
+        // 注册到 epoll
         epoll_event ev;
         ev.events  = EPOLLIN | EPOLLET; // 边缘触发
         ev.data.fd = pipeFd;
@@ -185,7 +184,6 @@ void TsharkManager::adapterFlowTrendMonitorThreadEntry()
                 std::istringstream iss(line);
                 std::string        timestampStr, lengthStr;
 
-                // 跳过无关行
                 if (line.find("Capturing") != std::string::npos ||
                     line.find("captured") != std::string::npos)
                 {
@@ -206,7 +204,7 @@ void TsharkManager::adapterFlowTrendMonitorThreadEntry()
 
                     // 更新流量趋势数据
                     std::unique_lock<std::recursive_mutex> lock(adapterFlowTrendMapLock);
-                    for (auto& pair : adapterFlowTrendMonitorMap) // 使用 C++11 的范围循环
+                    for (auto& pair : adapterFlowTrendMonitorMap)
                     {
                         const std::string&  adapterName = pair.first;
                         AdapterMonitorInfo& monitorInfo = pair.second;
@@ -291,8 +289,6 @@ bool TsharkManager::analysisFile(std::string filePath)
         cmd += arg + " ";
     }
 
-    // int result = std::system(cmd.c_str());
-
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe)
     {
@@ -309,7 +305,7 @@ bool TsharkManager::analysisFile(std::string filePath)
         std::shared_ptr<Packet> packet = std::make_shared<Packet>();
         if (!parseLine(buffer, packet))
         {
-            LOG_F(ERROR, buffer);
+            LOG_F(ERROR, "%s", buffer);
             assert(false);
         }
 
@@ -320,15 +316,17 @@ bool TsharkManager::analysisFile(std::string filePath)
         file_offset = file_offset + sizeof(PacketHeader) + packet->cap_len;
 
         // 获取IP地理位置
-        packet->src_location = IP2RegionUtil::getIpLocation(packet->src_ip);
-        packet->dst_location = IP2RegionUtil::getIpLocation(packet->dst_ip);
+        if (!IP2RegionUtil::init(ip2RegionDbPath)) {
+            LOG_F(WARNING, "无法初始化IP2Region数据库，IP地理位置信息将不可用");
+        } else {
+            packet->src_location = IP2RegionUtil::getIpLocation(packet->src_ip);
+            packet->dst_location = IP2RegionUtil::getIpLocation(packet->dst_ip);
+        }
 
-        // 处理每一个数据包
         processPacket(packet);
     }
     pclose(pipe);
 
-    // 记录当前分析的文件路径
     currentFilePath = filePath;
 
     return true;
@@ -336,7 +334,6 @@ bool TsharkManager::analysisFile(std::string filePath)
 
 bool TsharkManager::analysisFile(std::string filePath, std::vector<std::shared_ptr<Packet>>& packets)
 {
-    // 清空现有数据
     allPackets.clear();
     
     // 调用原有的analysisFile方法
@@ -396,7 +393,7 @@ bool TsharkManager::parseLine(std::string line, std::shared_ptr<Packet> packet)
     // 12: _ws.col.Info
 
     IP2RegionUtil ip2RegionUtil;
-    ip2RegionUtil.init("/home/ip2region.xdb");
+    ip2RegionUtil.init("resources/ip2region.xdb");
 
     if (fields.size() >= 16)
     {
@@ -512,7 +509,8 @@ std::vector<AdapterInfo> TsharkManager::getNetworkAdapterInfo()
 
 void TsharkManager::printAllPackets()
 {
-    uint32_t count = 0;
+    uint32_t count = allPackets.size();
+    LOG_F(INFO, "Number of packets: %u", count);
     for (auto pair : allPackets)
     {
         std::shared_ptr<Packet> packet = pair.second;
@@ -817,15 +815,12 @@ bool TsharkManager::convertXmlToJson(const std::string& xmlFile, const std::stri
         rapidxml::xml_document<> doc;
         doc.parse<0>(&xmlContent[0]);
 
-        // 创建JSON文档
         rapidjson::Document jsonDoc;
         jsonDoc.SetObject();
         rapidjson::Document::AllocatorType& allocator = jsonDoc.GetAllocator();
 
-        // 创建pdml对象
         rapidjson::Value pdmlObj(rapidjson::kObjectType);
 
-        // 获取pdml根节点
         rapidxml::xml_node<>* pdmlNode = doc.first_node("pdml");
         if (!pdmlNode)
         {
@@ -959,12 +954,10 @@ bool TsharkManager::convertXmlToJson(const std::string& xmlFile, const std::stri
             jsonDoc["pdml"]["packet"].Size() > 0) 
         {
             try {
-                // 遍历所有数据包
                 for (rapidjson::SizeType i = 0; i < jsonDoc["pdml"]["packet"].Size(); i++) {
                     if (jsonDoc["pdml"]["packet"][i].HasMember("proto") && 
                         jsonDoc["pdml"]["packet"][i]["proto"].IsArray() &&
                         jsonDoc["pdml"]["packet"][i]["proto"].Size() > 0) {
-                        // 翻译每个数据包的proto字段
                         CommonUtil::translateShowNameFields(jsonDoc["pdml"]["packet"][i]["proto"], allocator);
                     }
                 }
@@ -1015,13 +1008,11 @@ void TsharkManager::storageThreadEntry()
         waitInsertPacketsLock.unlock();
     };
 
-    // 只要停止标记没有点亮，存储线程就要一直存在
     while (!stopFlag) {
         storageWork();
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // 稍等一下最后再执行一次，防止有遗漏的数据未入库
     std::this_thread::sleep_for(std::chrono::seconds(1));
     storageWork();
 }
